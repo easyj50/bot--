@@ -1510,7 +1510,8 @@ async def run_user_bot(session_string, chat_id):
             "text": None,
             "chat_id": None,
         }
-         # ─── NC PATTERNS ────────────────────────────────────────────────────
+       
+        # ─── NC PATTERNS ────────────────────────────────────────────────────
         HINDINC_PATTERNS = [
             "{text} चुडाकड़ ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
             "{text} रैंडी ˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
@@ -1588,10 +1589,7 @@ async def run_user_bot(session_string, chat_id):
         EMOJI_NC_EMOJIS = ["🐧","🦭","🦈","🫍","🐬","🐋","🐳","🐟","🐠","🐡","🦐","🦞","🦀","🦑","🐙","🪼","🦪","🪸","🫧","🦂"]
         EMOJI_NC_PATTERN = "{text} <⋆.ೃ࿔*:･{emoji}⋆.ೃ࿔*:･>"
 
-
-        # ─── TEXT LISTS ──────────────────────────────────────────────
-       
-               # ─── TEXT LISTS ──────────────────────────────────────────────────────
+        # ─── TEXT LISTS ──────────────────────────────────────────────────────
         # ─── PREMIUM RAID TEXT LISTS ──────────────────────────────────────────
         mr_texts = [
         "TTTTTTT🍷EEEEEE💊RRRRR🔘OOOOO🎲BBBBB🤍EEEEEE💊GGGGGG🖤EEEEEE💊JJJJJJ👅 CCCCCC⚔️OOOOO🎲DDDDD👿UUUUU💣",
@@ -12661,16 +12659,6 @@ async def run_user_bot(session_string, chat_id):
         "Maa",
         "Ke"
         ]
-
-        premium_raid_texts = {
-            "mr": mr_texts, "mr2": mr2_texts, "br": br_texts, "br2": br2_texts, "br3": br3_texts,
-            "sqr": sqr_texts, "sq2": sq2_texts, "cr": cr_texts, "bar": bar_texts, "gr": gr_texts
-        }
-        premium_spam_texts = {
-            "ms": ms_texts, "ms2": ms2_texts, "bs": bs_texts, "bs2": bs2_texts, "bs3": bs3_texts,
-            "sqs": sqs_texts, "sqs2": sqs2_texts, "cs": cs_texts, "bas": bas_texts, "gs": gs_texts
-        }
-
         # ─── LOAD/SAVE FUNCTIONS ─────────────────────────────────────────────
         def load_admins():
             try:
@@ -12904,52 +12892,8 @@ async def run_user_bot(session_string, chat_id):
 
         # ─── NC LOOP ─────────────────────────────────────────────────────────
         async def nc_loop(chat_id, lang, text):
-            patterns = []
-            if lang == "hindi":
-                patterns = HINDINC_PATTERNS
-            elif lang == "urdu":
-                patterns = URDU_PATTERNS
-            elif lang == "bengali":
-                patterns = BENGALI_PATTERNS
-            elif lang == "bihari":
-                patterns = BIHARI_PATTERNS
-            elif lang == "english":
-                patterns = ENGLISH_PATTERNS
-            elif lang == "emoji":
-                patterns = None
-            else:
-                return
-            i = 0
-            while True:
-                if not user_bot.NC_STATE.get("active", False):
-                    break
-                try:
-                    if lang == "emoji":
-                        if not EMOJI_NC_EMOJIS:
-                            await asyncio.sleep(1)
-                            continue
-                        emoji = EMOJI_NC_EMOJIS[i % len(EMOJI_NC_EMOJIS)]
-                        new_title = EMOJI_NC_PATTERN.format(text=text, emoji=emoji)
-                    else:
-                        if not patterns:
-                            await asyncio.sleep(1)
-                            continue
-                        pattern = patterns[i % len(patterns)]
-                        new_title = pattern.format(text=text)
-                    try:
-                        await user_bot(functions.channels.EditTitleRequest(channel=chat_id, title=new_title))
-                    except Exception:
-                        try:
-                            await user_bot(functions.messages.EditChatTitleRequest(chat_id=chat_id, title=new_title))
-                        except Exception:
-                            pass
-                    i += 1
-                    await asyncio.sleep(1.5)
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    print(f"NC loop error: {e}")
-                    await asyncio.sleep(2)
+            # No patterns – do nothing
+            pass
 
         # ─── COMMAND REGISTRY ──────────────────────────────────────────────
         commands = {}
@@ -13510,6 +13454,12 @@ async def run_user_bot(session_string, chat_id):
             "menu13": MENU_13,
             "menu14": MENU_14,
         }
+
+        # ─── REGISTER MENU COMMANDS ────────────────────────────────────────
+        for menu_name, menu_text in MENU_MAP.items():
+            async def menu_cmd(event, arg, text=menu_text):
+                await safe_edit(event, text)
+            register_cmd(menu_name)(menu_cmd)
 
         # ─── PROTECTION COMMANDS ──────────────────────────────────────────────
         @register_cmd("protect", premium=True)
