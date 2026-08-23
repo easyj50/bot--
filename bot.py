@@ -177,7 +177,6 @@ async def init_db():
                 PRIMARY KEY (uid, chat_id)
             )
         """)
-        # NEW TABLE for per-user filters
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS user_filters (
                 user_id BIGINT,
@@ -401,12 +400,26 @@ running_tasks = set()
 
 print("🚀 Main Bot started...")
 
-# ─── HELPER FUNCTIONS FOR MENU ───────────────────────────────────
-def build_box(title, lines, footer=""):
-    return f"**{title}**\n━━━━━━━━━━━━━━━\n" + "\n".join(lines) + (f"\n\n{footer}" if footer else "")
+# ─── MENU BOX BUILDER (NEW DESIGN) ───────────────────────────────
+def build_menu(title: str, lines: list, footer: str = "") -> str:
+    """Build a visually appealing menu with emojis and separators."""
+    width = 30
+    sep = "━" * width
+    menu = f"🌟 **{title}**\n"
+    menu += f"{sep}\n"
+    for line in lines:
+        if line == "":
+            menu += "\n"
+        else:
+            # Remove extra spaces and format
+            menu += f"{line}\n"
+    if footer:
+        menu += f"{sep}\n"
+        menu += f"💡 {footer}"
+    return menu
 
-def menu_footer(cmd):
-    return f"💡 Use `{cmd}` to return"
+def menu_footer(back_cmd: str) -> str:
+    return f"Use `{back_cmd}` to go back • `.menu` for main"
 
 # ─── MAIN BOT HANDLERS ────────────────────────────────────────────
 
@@ -503,7 +516,7 @@ def plan_price_str(plan):
 @MAIN_BOT_CLIENT.on(events.NewMessage(pattern="/start"))
 async def start_handler(event):
     user_id = event.sender_id
-    broadcast_users.add(user_id)   # permanent addition
+    broadcast_users.add(user_id)
     save_users(broadcast_users)
     buttons = [
         [types.KeyboardButtonCallback("💎 Buy Premium", data="buy_menu")],
@@ -1489,10 +1502,10 @@ async def run_user_bot(session_string, chat_id):
         user_bot.doom_raid = {}
         user_bot.pwr_users = set()
         user_bot.pwr_raid = {}
-        user_bot.pwr_index = {}          # Sequential index for PWR
+        user_bot.pwr_index = {}
         user_bot.ows_users = set()
         user_bot.ows_spam = {}
-        user_bot.ows_index = {}          # Sequential index for OWS
+        user_bot.ows_index = {}
         user_bot.premium_raids = {
             "mr": [], "mr2": [], "br": [], "br2": [], "br3": [],
             "sqr": [], "sq2": [], "cr": [], "bar": [], "gr": []
@@ -1510,7 +1523,8 @@ async def run_user_bot(session_string, chat_id):
             "text": None,
             "chat_id": None,
         }
-       
+
+
         # ─── NC PATTERNS ────────────────────────────────────────────────────
         HINDINC_PATTERNS = [
             "{text} चुडाकड़ ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
@@ -7762,7 +7776,7 @@ async def run_user_bot(session_string, chat_id):
         "2 𝙍𝙐𝙋𝘼𝙔 𝙆𝙄 𝙋𝙀𝙋𝙎𝙄 𝙏𝙀𝙍𝙄 𝙈𝙐𝙈𝙈𝙔 𝙎𝘼𝘽𝙎𝙀 𝙎𝙀𝙓𝙔 💋💦",
         "🇮🇳𝐵𝐻𝐴𝑅𝐴𝑇 𝐻𝐴𝑀𝐴𝑅𝐴 𝐷𝐸𝑆𝐻 𝐻 𝐴𝑈𝑅 𝑈𝑆 𝐷𝐸𝑆𝐻 𝑀𝐸 तेरी मां घर घर जाके SAMBHOG करती है ! 🛐"
         "Baap bhi bnale muje rndike",
-        "Tera baap randibaaz ey yaad ey tujhe",
+        "Tera baap ZA ey yaad ey tujhe",
         "Tu apni Maa cuda na tympass",
         "Oye unfunny swipe mtt kr",
         "Oh hello bihari tera baap bihari or tu v bihari aaukat me rha kr.",
@@ -7775,7 +7789,7 @@ async def run_user_bot(session_string, chat_id):
         "Ky? jldi likh kidde.",
         "Bihari com gang ke baap ko tag crega tu",
         "Mujhe cya tu bihari ey tmkc bs",
-        "Jaldi se randibaaz papa bol",
+        "Jaldi se ZA papa bol",
         "Side hoja bihari tery maa cud gai ab",
         "Hye pgl bhg mat ache se cud",
         "bhg ny randyke tu ajj",
@@ -8015,13 +8029,13 @@ async def run_user_bot(session_string, chat_id):
         "ugly randyke chup",
         "makafuddatery",
         "tera baap ko tag kr..?",
-        "ache se tag kr randibaaz bhagwn ko..",
+        "ache se tag kr ZA bhagwn ko..",
         "cudke pgl ny ho tu",
         "cudke pgl ho rha tu kid",
         "ma to cud gai tery hawabzi cr..",
         "bs ma codni ey tery",
         "town mei cud tery mako lekr",
-        "tery ma sexy ko bej - randibaaz bhgwn pe",
+        "tery ma sexy ko bej - ZA bhgwn pe",
         "speed pkd cp ny kr",
         "Try ma rendy",
         "Bhkk cud",
@@ -8089,8 +8103,8 @@ async def run_user_bot(session_string, chat_id):
         "Free mey cud tu randyke"
         "speed ny weak tatte terme",
         "kitni br cudwayega terymako",
-        "lund le randibaaz bapka",
-        "lun cus jaldi se randibaaz bapka",
+        "lund le ZA bapka",
+        "lun cus jaldi se ZA bapka",
         "koi ny dekh rha cudle tu",
         "cudle betichod ache se",
         "maki chut tery bs yehi janta mey",
@@ -8132,7 +8146,7 @@ async def run_user_bot(session_string, chat_id):
         "tery make sth tery bhen vi cudwa le",
         "tery make sth tery didi vi cud gai",
         "Chat fyter bnega randce codu tery mako",
-        "bol randibaaz daddy ey",
+        "bol ZA daddy ey",
         "bullyx randyke uth",
         "mar marke cud rha tu",
         "or tery ma marke cud gai"
@@ -8178,7 +8192,7 @@ async def run_user_bot(session_string, chat_id):
         "Maan le cud gya tu sun bat ab",
         "makafudda fat gya tery ruk"
         "BAAP BHI BNALE MUJE RNDIKE",
-        "TERA BAAP RANDIBAAZ EY YAAD EY TUJHE",
+        "TERA BAAP ZA EY YAAD EY TUJHE",
         "TU APNI MAA CUDA NA TYMPASS",
         "OYE UNFUNNY SWIPE MTT KR",
         "OH HELLO BIHARI TERA BAAP BIHARI OR TU V BIHARI AAUKAT ME RHA KR.",
@@ -8191,7 +8205,7 @@ async def run_user_bot(session_string, chat_id):
         "KY? JLDI LIKH KIDDE.",
         "BIHARI COM GANG KE BAAP KO TAG CREGA TU",
         "MUJHE CYA TU BIHARI EY TMKC BS",
-        "JALDI SE RANDIBAAZ PAPA BOL",
+        "JALDI SE ZA PAPA BOL",
         "SIDE HOJA BIHARI TERY MAA CUD GAI AB",
         "HYE PGL BHG MAT ACHE SE CUD",
         "BHG NY RANDYKE TU AJJ",
@@ -8431,13 +8445,13 @@ async def run_user_bot(session_string, chat_id):
         "UGLY RANDYKE CHUP",
         "MAKAFUDDATERY",
         "TERA BAAP KO TAG KR..?",
-        "ACHE SE TAG KR RANDIBAAZ BHAGWN KO..",
+        "ACHE SE TAG KR ZA BHAGWN KO..",
         "CUDKE PGL NY HO TU",
         "CUDKE PGL HO RHA TU KID",
         "MA TO CUD GAI TERY HAWABZI CR..",
         "BS MA CODNI EY TERY",
         "TOWN MEI CUD TERY MAKO LEKR",
-        "TERY MA SEXY KO BEJ - RANDIBAAZ BHGWN PE",
+        "TERY MA SEXY KO BEJ - ZA BHGWN PE",
         "SPEED PKD CP NY KR",
         "TRY MA RENDY",
         "BHKK CUD",
@@ -8505,8 +8519,8 @@ async def run_user_bot(session_string, chat_id):
         "FREE MEY CUD TU RANDYKE",
         "SPEED NY WEAK TATTE TERME",
         "KITNI BR CUDWAYEGA TERYMAKO",
-        "LUND LE RANDIBAAZ BAPKA",
-        "LUN CUS JALDI SE RANDIBAAZ BAPKA",
+        "LUND LE ZA BAPKA",
+        "LUN CUS JALDI SE ZA BAPKA",
         "KOI NY DEKH RHA CUDLE TU",
         "CUDLE BETICHOD ACHE SE",
         "MAKI CHUT TERY BS YEHI JANTA MEY",
@@ -8548,7 +8562,7 @@ async def run_user_bot(session_string, chat_id):
         "TERY MAKE STH TERY BHEN VI CUDWA LE",
         "TERY MAKE STH TERY DIDI VI CUD GAI",
         "CHAT FYTER BNEGA RANDCE CODU TERY MAKO",
-        "BOL RANDIBAAZ DADDY EY",
+        "BOL ZA DADDY EY",
         "BULLYX RANDYKE UTH",
         "MAR MARKE CUD RHA TU",
         "OR TERY MA MARKE CUD GAI",
@@ -8922,7 +8936,7 @@ async def run_user_bot(session_string, chat_id):
         "2 𝙍𝙐𝙋𝘼𝙔 𝙆𝙄 𝙋𝙀𝙋𝙎𝙄 𝙏𝙀𝙍𝙄 𝙈𝙐𝙈𝙈𝙔 𝙎𝘼𝘽𝙎𝙀 𝙎𝙀𝙓𝙔 💋💦",
         "🇮🇳𝐵𝐻𝐴𝑅𝐴𝑇 𝐻𝐴𝑀𝐴𝑅𝐴 𝐷𝐸𝑆𝐻 𝐻 𝐴𝑈𝑅 𝑈𝑆 𝐷𝐸𝑆𝐻 𝑀𝐸 तेरी मां घर घर जाके SAMBHOG करती है ! 🛐"
         "Baap bhi bnale muje rndike",
-        "Tera baap randibaaz ey yaad ey tujhe",
+        "Tera baap ZA ey yaad ey tujhe",
         "Tu apni Maa cuda na tympass",
         "Oye unfunny swipe mtt kr",
         "Oh hello bihari tera baap bihari or tu v bihari aaukat me rha kr.",
@@ -8935,7 +8949,7 @@ async def run_user_bot(session_string, chat_id):
         "Ky? jldi likh kidde.",
         "Bihari com gang ke baap ko tag crega tu",
         "Mujhe cya tu bihari ey tmkc bs",
-        "Jaldi se randibaaz papa bol",
+        "Jaldi se ZA papa bol",
         "Side hoja bihari tery maa cud gai ab",
         "Hye pgl bhg mat ache se cud",
         "bhg ny randyke tu ajj",
@@ -9175,13 +9189,13 @@ async def run_user_bot(session_string, chat_id):
         "ugly randyke chup",
         "makafuddatery",
         "tera baap ko tag kr..?",
-        "ache se tag kr randibaaz bhagwn ko..",
+        "ache se tag kr ZA bhagwn ko..",
         "cudke pgl ny ho tu",
         "cudke pgl ho rha tu kid",
         "ma to cud gai tery hawabzi cr..",
         "bs ma codni ey tery",
         "town mei cud tery mako lekr",
-        "tery ma sexy ko bej - randibaaz bhgwn pe",
+        "tery ma sexy ko bej - ZA bhgwn pe",
         "speed pkd cp ny kr",
         "Try ma rendy",
         "Bhkk cud",
@@ -9249,8 +9263,8 @@ async def run_user_bot(session_string, chat_id):
         "Free mey cud tu randyke"
         "speed ny weak tatte terme",
         "kitni br cudwayega terymako",
-        "lund le randibaaz bapka",
-        "lun cus jaldi se randibaaz bapka",
+        "lund le ZA bapka",
+        "lun cus jaldi se ZA bapka",
         "koi ny dekh rha cudle tu",
         "cudle betichod ache se",
         "maki chut tery bs yehi janta mey",
@@ -9292,7 +9306,7 @@ async def run_user_bot(session_string, chat_id):
         "tery make sth tery bhen vi cudwa le",
         "tery make sth tery didi vi cud gai",
         "Chat fyter bnega randce codu tery mako",
-        "bol randibaaz daddy ey",
+        "bol ZA daddy ey",
         "bullyx randyke uth",
         "mar marke cud rha tu",
         "or tery ma marke cud gai"
@@ -9338,7 +9352,7 @@ async def run_user_bot(session_string, chat_id):
         "Maan le cud gya tu sun bat ab",
         "makafudda fat gya tery ruk"
         "BAAP BHI BNALE MUJE RNDIKE",
-        "TERA BAAP RANDIBAAZ EY YAAD EY TUJHE",
+        "TERA BAAP ZA EY YAAD EY TUJHE",
         "TU APNI MAA CUDA NA TYMPASS",
         "OYE UNFUNNY SWIPE MTT KR",
         "OH HELLO BIHARI TERA BAAP BIHARI OR TU V BIHARI AAUKAT ME RHA KR.",
@@ -9351,7 +9365,7 @@ async def run_user_bot(session_string, chat_id):
         "KY? JLDI LIKH KIDDE.",
         "BIHARI COM GANG KE BAAP KO TAG CREGA TU",
         "MUJHE CYA TU BIHARI EY TMKC BS",
-        "JALDI SE RANDIBAAZ PAPA BOL",
+        "JALDI SE ZA PAPA BOL",
         "SIDE HOJA BIHARI TERY MAA CUD GAI AB",
         "HYE PGL BHG MAT ACHE SE CUD",
         "BHG NY RANDYKE TU AJJ",
@@ -9591,13 +9605,13 @@ async def run_user_bot(session_string, chat_id):
         "UGLY RANDYKE CHUP",
         "MAKAFUDDATERY",
         "TERA BAAP KO TAG KR..?",
-        "ACHE SE TAG KR RANDIBAAZ BHAGWN KO..",
+        "ACHE SE TAG KR ZA BHAGWN KO..",
         "CUDKE PGL NY HO TU",
         "CUDKE PGL HO RHA TU KID",
         "MA TO CUD GAI TERY HAWABZI CR..",
         "BS MA CODNI EY TERY",
         "TOWN MEI CUD TERY MAKO LEKR",
-        "TERY MA SEXY KO BEJ - RANDIBAAZ BHGWN PE",
+        "TERY MA SEXY KO BEJ - ZA BHGWN PE",
         "SPEED PKD CP NY KR",
         "TRY MA RENDY",
         "BHKK CUD",
@@ -9665,8 +9679,8 @@ async def run_user_bot(session_string, chat_id):
         "FREE MEY CUD TU RANDYKE",
         "SPEED NY WEAK TATTE TERME",
         "KITNI BR CUDWAYEGA TERYMAKO",
-        "LUND LE RANDIBAAZ BAPKA",
-        "LUN CUS JALDI SE RANDIBAAZ BAPKA",
+        "LUND LE ZA BAPKA",
+        "LUN CUS JALDI SE ZA BAPKA",
         "KOI NY DEKH RHA CUDLE TU",
         "CUDLE BETICHOD ACHE SE",
         "MAKI CHUT TERY BS YEHI JANTA MEY",
@@ -9708,7 +9722,7 @@ async def run_user_bot(session_string, chat_id):
         "TERY MAKE STH TERY BHEN VI CUDWA LE",
         "TERY MAKE STH TERY DIDI VI CUD GAI",
         "CHAT FYTER BNEGA RANDCE CODU TERY MAKO",
-        "BOL RANDIBAAZ DADDY EY",
+        "BOL ZA DADDY EY",
         "BULLYX RANDYKE UTH",
         "MAR MARKE CUD RHA TU",
         "OR TERY MA MARKE CUD GAI",
@@ -10140,7 +10154,7 @@ async def run_user_bot(session_string, chat_id):
         "2 𝙍𝙐𝙋𝘼𝙔 𝙆𝙄 𝙋𝙀𝙋𝙎𝙄 𝙏𝙀𝙍𝙄 𝙈𝙐𝙈𝙈𝙔 𝙎𝘼𝘽𝙎𝙀 𝙎𝙀𝙓𝙔 💋💦",
         "🇮🇳𝐵𝐻𝐴𝑅𝐴𝑇 𝐻𝐴𝑀𝐴𝑅𝐴 𝐷𝐸𝑆𝐻 𝐻 𝐴𝑈𝑅 𝑈𝑆 𝐷𝐸𝑆𝐻 𝑀𝐸 तेरी मां घर घर जाके SAMBHOG करती है ! 🛐"
         "Baap bhi bnale muje rndike",
-        "Tera baap randibaaz ey yaad ey tujhe",
+        "Tera baap ZA ey yaad ey tujhe",
         "Tu apni Maa cuda na tympass",
         "Oye unfunny swipe mtt kr",
         "Oh hello bihari tera baap bihari or tu v bihari aaukat me rha kr.",
@@ -10153,7 +10167,7 @@ async def run_user_bot(session_string, chat_id):
         "Ky? jldi likh kidde.",
         "Bihari com gang ke baap ko tag crega tu",
         "Mujhe cya tu bihari ey tmkc bs",
-        "Jaldi se randibaaz papa bol",
+        "Jaldi se ZA papa bol",
         "Side hoja bihari tery maa cud gai ab",
         "Hye pgl bhg mat ache se cud",
         "bhg ny randyke tu ajj",
@@ -10393,13 +10407,13 @@ async def run_user_bot(session_string, chat_id):
         "ugly randyke chup",
         "makafuddatery",
         "tera baap ko tag kr..?",
-        "ache se tag kr randibaaz bhagwn ko..",
+        "ache se tag kr ZA bhagwn ko..",
         "cudke pgl ny ho tu",
         "cudke pgl ho rha tu kid",
         "ma to cud gai tery hawabzi cr..",
         "bs ma codni ey tery",
         "town mei cud tery mako lekr",
-        "tery ma sexy ko bej - randibaaz bhgwn pe",
+        "tery ma sexy ko bej - ZA bhgwn pe",
         "speed pkd cp ny kr",
         "Try ma rendy",
         "Bhkk cud",
@@ -10467,8 +10481,8 @@ async def run_user_bot(session_string, chat_id):
         "Free mey cud tu randyke"
         "speed ny weak tatte terme",
         "kitni br cudwayega terymako",
-        "lund le randibaaz bapka",
-        "lun cus jaldi se randibaaz bapka",
+        "lund le ZA bapka",
+        "lun cus jaldi se ZA bapka",
         "koi ny dekh rha cudle tu",
         "cudle betichod ache se",
         "maki chut tery bs yehi janta mey",
@@ -10510,7 +10524,7 @@ async def run_user_bot(session_string, chat_id):
         "tery make sth tery bhen vi cudwa le",
         "tery make sth tery didi vi cud gai",
         "Chat fyter bnega randce codu tery mako",
-        "bol randibaaz daddy ey",
+        "bol ZA daddy ey",
         "bullyx randyke uth",
         "mar marke cud rha tu",
         "or tery ma marke cud gai"
@@ -10556,7 +10570,7 @@ async def run_user_bot(session_string, chat_id):
         "Maan le cud gya tu sun bat ab",
         "makafudda fat gya tery ruk"
         "BAAP BHI BNALE MUJE RNDIKE",
-        "TERA BAAP RANDIBAAZ EY YAAD EY TUJHE",
+        "TERA BAAP ZA EY YAAD EY TUJHE",
         "TU APNI MAA CUDA NA TYMPASS",
         "OYE UNFUNNY SWIPE MTT KR",
         "OH HELLO BIHARI TERA BAAP BIHARI OR TU V BIHARI AAUKAT ME RHA KR.",
@@ -10569,7 +10583,7 @@ async def run_user_bot(session_string, chat_id):
         "KY? JLDI LIKH KIDDE.",
         "BIHARI COM GANG KE BAAP KO TAG CREGA TU",
         "MUJHE CYA TU BIHARI EY TMKC BS",
-        "JALDI SE RANDIBAAZ PAPA BOL",
+        "JALDI SE ZA PAPA BOL",
         "SIDE HOJA BIHARI TERY MAA CUD GAI AB",
         "HYE PGL BHG MAT ACHE SE CUD",
         "BHG NY RANDYKE TU AJJ",
@@ -10809,13 +10823,13 @@ async def run_user_bot(session_string, chat_id):
         "UGLY RANDYKE CHUP",
         "MAKAFUDDATERY",
         "TERA BAAP KO TAG KR..?",
-        "ACHE SE TAG KR RANDIBAAZ BHAGWN KO..",
+        "ACHE SE TAG KR ZA BHAGWN KO..",
         "CUDKE PGL NY HO TU",
         "CUDKE PGL HO RHA TU KID",
         "MA TO CUD GAI TERY HAWABZI CR..",
         "BS MA CODNI EY TERY",
         "TOWN MEI CUD TERY MAKO LEKR",
-        "TERY MA SEXY KO BEJ - RANDIBAAZ BHGWN PE",
+        "TERY MA SEXY KO BEJ - ZA BHGWN PE",
         "SPEED PKD CP NY KR",
         "TRY MA RENDY",
         "BHKK CUD",
@@ -10883,8 +10897,8 @@ async def run_user_bot(session_string, chat_id):
         "FREE MEY CUD TU RANDYKE",
         "SPEED NY WEAK TATTE TERME",
         "KITNI BR CUDWAYEGA TERYMAKO",
-        "LUND LE RANDIBAAZ BAPKA",
-        "LUN CUS JALDI SE RANDIBAAZ BAPKA",
+        "LUND LE ZA BAPKA",
+        "LUN CUS JALDI SE ZA BAPKA",
         "KOI NY DEKH RHA CUDLE TU",
         "CUDLE BETICHOD ACHE SE",
         "MAKI CHUT TERY BS YEHI JANTA MEY",
@@ -10926,7 +10940,7 @@ async def run_user_bot(session_string, chat_id):
         "TERY MAKE STH TERY BHEN VI CUDWA LE",
         "TERY MAKE STH TERY DIDI VI CUD GAI",
         "CHAT FYTER BNEGA RANDCE CODU TERY MAKO",
-        "BOL RANDIBAAZ DADDY EY",
+        "BOL ZA DADDY EY",
         "BULLYX RANDYKE UTH",
         "MAR MARKE CUD RHA TU",
         "OR TERY MA MARKE CUD GAI",
@@ -12659,6 +12673,7 @@ async def run_user_bot(session_string, chat_id):
         "Maa",
         "Ke"
         ]
+       
         # ─── LOAD/SAVE FUNCTIONS ─────────────────────────────────────────────
         def load_admins():
             try:
@@ -12913,19 +12928,19 @@ async def run_user_bot(session_string, chat_id):
         owner_only_commands = {
             "addtext", "edittext", "deltext", "cleartext",
             "spraydelay", "addadmin", "deladmin", "giftpremium",
-            "freeze", "unfreeze", "stopallspray"
+            "freeze", "unfreeze", "stopallspray", "stopall"
         }
 
-        # ─── MENU DEFINITIONS ──────────────────────────────────────────────────
-        MENU_MAIN = build_box("📖 MAIN MENU", [
+        # ─── MENU DEFINITIONS (NEW DESIGN) ────────────────────────────────
+        MENU_MAIN = build_menu("📖 MAIN MENU", [
             "",
-            "─── 〔 ⚡️ SYSTEM INFO 〕 ───",
+            "─── ⚡️ SYSTEM INFO ───",
             "",
             "  ✦ Owner  : ZYЯΣX ✕ ΛΣƬΉΣЯ",
             "  ✦ Cmds   : 500+",
             "  ✦ Prefix : `.`",
             "",
-            "─── 〔 📂 NAVIGATION 〕 ───",
+            "─── 📂 NAVIGATION ───",
             "",
             "  ▸ `.menu1`   → Admin, Mute, Group",
             "  ▸ `.menu2`   → Raid Engine + PWR",
@@ -12945,15 +12960,15 @@ async def run_user_bot(session_string, chat_id):
             "",
         ], footer="💡 Use `.cmds` for full list • `.ping` for latency")
 
-        MENU_1 = build_box("👑 ADMIN & GROUP", [
+        MENU_1 = build_menu("👑 ADMIN & GROUP", [
             "",
-            "─── 〔 ADMIN 〕 ───",
+            "─── ADMIN ───",
             "",
             "  ▸ `.admins`    → List admins",
             "  ▸ `.addadmin`  → Add admin (reply)",
             "  ▸ `.deladmin`  → Remove admin",
             "",
-            "─── 〔 MUTE 〕 ───",
+            "─── MUTE ───",
             "",
             "  ▸ `.mute`      → Local mute",
             "  ▸ `.unmute`    → Unmute",
@@ -12961,61 +12976,61 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.gunmute`   → Global unmute",
             "  ▸ `.mutelist`  → Status",
             "",
-            "─── 〔 GROUP MOD 〕 ───",
+            "─── GROUP MOD ───",
             "",
             "  ▸ `.lock`      → Lock group",
             "  ▸ `.unlock`    → Unlock",
             "  ▸ `.addbots`   → Add bots",
             "",
-            "─── 〔 AUTO TAG 〕 ───",
+            "─── AUTO TAG ───",
             "",
             "  ▸ `.autotag`       → Tag all members",
             "  ▸ `.stopautotag`   → Stop tagging",
             "",
         ], footer=menu_footer(".menu1"))
 
-        MENU_2 = build_box("⚔️ RAID ENGINE", [
+        MENU_2 = build_menu("⚔️ RAID ENGINE", [
             "",
-            "─── 〔 REPLY RAID 〕 ───",
+            "─── REPLY RAID ───",
             "",
             "  ▸ `.reply`   → Start reply raid",
             "  ▸ `.sreply`  → Stop reply raid",
             "",
-            "─── 〔 RR (Reply+React) 〕 ───",
+            "─── RR (Reply+React) ───",
             "",
             "  ▸ `.rr`   → Start RR raid",
             "  ▸ `.srr`  → Stop RR raid",
             "",
-            "─── 〔 FLAG RAID 〕 ───",
+            "─── FLAG RAID ───",
             "",
             "  ▸ `.flag`   → Start flag raid",
             "  ▸ `.sflag`  → Stop flag raid",
             "",
-            "─── 〔 HEART RAID 〕 ───",
+            "─── HEART RAID ───",
             "",
             "  ▸ `.hrr`   → Start heart raid",
             "  ▸ `.shrr`  → Stop heart raid",
             "",
-            "─── 〔 GOD RAID (4 replies) 〕 ───",
+            "─── GOD RAID (4 replies) ───",
             "",
             "  ▸ `.replygod` → Start god raid",
             "  ▸ `.sgod`     → Stop god raid",
             "",
-            "─── 〔 CUSTOM RAID 〕 ───",
+            "─── CUSTOM RAID ───",
             "",
             "  ▸ `.customraid`    → Start custom",
             "  ▸ `.stopcustomraid`→ Stop custom",
             "",
-            "─── 〔 PWR RAID (Sequential) 〕 ───",
+            "─── PWR RAID (Sequential) ───",
             "",
             "  ▸ `.pwr`  → Start PWR raid (sequential)",
             "  ▸ `.spwr` → Stop PWR raid",
             "",
         ], footer=menu_footer(".menu2"))
 
-        MENU_3 = build_box("💣 SPAM & TEXT", [
+        MENU_3 = build_menu("💣 SPAM & TEXT", [
             "",
-            "─── 〔 SPRAY COMMANDS 〕 ───",
+            "─── SPRAY COMMANDS ───",
             "",
             "  ▸ `.spray`      → Infinite spray",
             "  ▸ `.dspray`     → Stop spray (in current chat)",
@@ -13025,43 +13040,44 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.countspray` → Exactly N times",
             "  ▸ `.spraydelay` → Adjust speed (owner)",
             "",
-            "─── 〔 TEXT MANAGER 〕 ───",
+            "─── TEXT MANAGER ───",
             "",
             "  ▸ `.addtext`   → Save text",
             "  ▸ `.listtexts` → Show saved texts",
             "  ▸ `.deltext`   → Delete text (slot)",
             "  ▸ `.cleartext` → Clear all (confirm)",
             "",
-            "─── 〔 DEATHGOD 〕 ───",
+            "─── DEATHGOD ───",
             "",
             "  ▸ `.deathgod`  → Start deathgod",
             "  ▸ `.sdeathgod` → Stop deathgod",
             "",
-            "─── 〔 OWS SPAM (Sequential) 〕 ───",
+            "─── OWS SPAM (Sequential) ───",
             "",
             "  ▸ `.ows` → Start OWS spam (sequential)",
             "  ▸ `.sows` → Stop OWS spam",
             "",
-            "─── 〔 GLOBAL STOP 〕 ───",
+            "─── GLOBAL STOP ───",
             "",
             "  ▸ `.stopallspray` → Stop ALL sprays/raids",
+            "  ▸ `.stopall`       → Stop EVERYTHING (all raids, spams, etc.)",
             "",
         ], footer=menu_footer(".menu3"))
 
-        MENU_4 = build_box("🛡️ PROTECTION", [
+        MENU_4 = build_menu("🛡️ PROTECTION", [
             "",
-            "─── 〔 ANTI-DELETE 〕 ───",
+            "─── ANTI-DELETE ───",
             "",
             "  ▸ `.antidel on/off` → Toggle",
             "  ▸ `.antidel` → Status",
             "",
-            "─── 〔 WATCHSPAM 〕 ───",
+            "─── WATCHSPAM ───",
             "",
             "  ▸ `.watchspam`   → Add watch",
             "  ▸ `.unwatchspam` → Remove watch",
             "  ▸ `.watchlist`   → Active watches",
             "",
-            "─── 〔 AUTO REACT 〕 ───",
+            "─── AUTO REACT ───",
             "",
             "  ▸ `.ar`       → Set auto-react (emoji)",
             "  ▸ `.sar`      → Disable",
@@ -13071,9 +13087,9 @@ async def run_user_bot(session_string, chat_id):
             "",
         ], footer=menu_footer(".menu4"))
 
-        MENU_5 = build_box("⚙️ TOOLS & UTILITY", [
+        MENU_5 = build_menu("⚙️ TOOLS & UTILITY", [
             "",
-            "─── 〔 TOOLS 〕 ───",
+            "─── TOOLS ───",
             "",
             "  ▸ `.tts`     → Text-to-Speech",
             "  ▸ `.qrcode`  → Generate QR",
@@ -13086,29 +13102,29 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.short`   → Shorten URL",
             "  ▸ `.info`    → User info",
             "",
-            "─── 〔 ECHO 〕 ───",
+            "─── ECHO ───",
             "",
             "  ▸ `.echo` → Echo back text",
             "",
-            "─── 〔 MUSIC 〕 ───",
+            "─── MUSIC ───",
             "",
             "  ▸ `.music`  → Send as voice",
             "  ▸ `.dmusic` → Download MP3",
             "",
-            "─── 〔 NOTES 〕 ───",
+            "─── NOTES ───",
             "",
             "  ▸ `.notesadd`    → Save note",
             "  ▸ `.noteslist`   → List notes",
             "  ▸ `.notesdelete` → Delete note",
             "",
-            "─── 〔 DM SHIELD (Premium) 〕 ───",
+            "─── DM SHIELD (Premium) ───",
             "",
             "  ▸ `.dmshield on/off` → Toggle shield",
             "  ▸ `.approve`         → Approve DM user",
             "  ▸ `.unapprove`       → Remove approval",
             "  ▸ `.blockedlist`     → List blocked users",
             "",
-            "─── 〔 OWNER/ADMIN 〕 ───",
+            "─── OWNER/ADMIN ───",
             "",
             "  ▸ `.copy`    → Clone profile (reply)",
             "  ▸ `.normal`  → Restore original",
@@ -13118,17 +13134,17 @@ async def run_user_bot(session_string, chat_id):
             "",
         ], footer=menu_footer(".menu5"))
 
-        MENU_6 = build_box("📨 SEND & TAG", [
+        MENU_6 = build_menu("📨 SEND & TAG", [
             "",
-            "─── 〔 SEND MESSAGE 〕 ───",
+            "─── SEND MESSAGE ───",
             "",
             "  ▸ `.send @user <msg>` → Direct message",
             "",
-            "─── 〔 TAG MULTIPLE 〕 ───",
+            "─── TAG MULTIPLE ───",
             "",
             "  ▸ `.tag @user1 msg1 @user2 msg2 ...`",
             "",
-            "─── 〔 BASIC 〕 ───",
+            "─── BASIC ───",
             "",
             "  ▸ `.ping`   → Check latency",
             "  ▸ `.status` → Bot status & uptime",
@@ -13136,9 +13152,9 @@ async def run_user_bot(session_string, chat_id):
             "",
         ], footer=menu_footer(".menu6"))
 
-        MENU_7 = build_box("🎭 FUN METERS", [
+        MENU_7 = build_menu("🎭 FUN METERS", [
             "",
-            "─── 〔 % METERS 〕 ───",
+            "─── % METERS ───",
             "",
             "  ▸ `.studmeter`  → Stud %",
             "  ▸ `.looks`      → Looks %",
@@ -13155,12 +13171,12 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.pookie`     → Pookie %",
             "  ▸ `.baddie`     → Baddie %",
             "",
-            "─── 〔 SCORE METERS 〕 ───",
+            "─── SCORE METERS ───",
             "",
             "  ▸ `.rizz` → Rizz (1-100)",
             "  ▸ `.iq`   → IQ (1-200)",
             "",
-            "─── 〔 RELATIONSHIP 〕 ───",
+            "─── RELATIONSHIP ───",
             "",
             "  ▸ `.bestfrnd` → Ask best friend",
             "  ▸ `.marriage` → Propose",
@@ -13168,90 +13184,90 @@ async def run_user_bot(session_string, chat_id):
             "",
         ], footer=menu_footer(".menu7"))
 
-        MENU_8 = build_box("🎯 FUN RAIDS", [
+        MENU_8 = build_menu("🎯 FUN RAIDS", [
             "",
-            "─── 〔 SHAYARI RAID 〕 ───",
+            "─── SHAYARI RAID ───",
             "  ▸ `.shayariraid`  •  `.sshayariraid`",
             "",
-            "─── 〔 RIZZ RAID 〕 ───",
+            "─── RIZZ RAID ───",
             "  ▸ `.rizzraid`  •  `.srizzraid`",
             "",
-            "─── 〔 PICKUP RAID 〕 ───",
+            "─── PICKUP RAID ───",
             "  ▸ `.pickupraid`  •  `.spickupraid`",
             "",
-            "─── 〔 ROMANCE RAID 〕 ───",
+            "─── ROMANCE RAID ───",
             "  ▸ `.romanceraid`  •  `.sromanceraid`",
             "",
-            "─── 〔 TROLL RAID 〕 ───",
+            "─── TROLL RAID ───",
             "  ▸ `.trollraid`  •  `.strollraid`",
             "",
-            "─── 〔 RAGEBAIT RAID 〕 ───",
+            "─── RAGEBAIT RAID ───",
             "  ▸ `.ragebaitraid`  •  `.sragebaitraid`",
             "",
-            "─── 〔 ROAST RAID 〕 ───",
+            "─── ROAST RAID ───",
             "  ▸ `.roastraid`  •  `.sroastraid`",
             "",
         ], footer="💡 Usage: .<raid> @user <count> • .s<raid> @user to stop")
 
-        MENU_9 = build_box("💢 NON-ABUSIVE RAIDS", [
+        MENU_9 = build_menu("💢 NON-ABUSIVE RAIDS", [
             "",
-            "─── 〔 ATTACK 〕 ───",
+            "─── ATTACK ───",
             "  ▸ `.attackraid`  •  `.sattackraid`",
             "",
-            "─── 〔 WAR 〕 ───",
+            "─── WAR ───",
             "  ▸ `.warraid`  •  `.swarraid`",
             "",
-            "─── 〔 SAVAGE 〕 ───",
+            "─── SAVAGE ───",
             "  ▸ `.savageraid`  •  `.ssavageraid`",
             "",
-            "─── 〔 ULTRA 〕 ───",
+            "─── ULTRA ───",
             "  ▸ `.ultraraid`  •  `.sultraraid`",
             "",
-            "─── 〔 SHAME 〕 ───",
+            "─── SHAME ───",
             "  ▸ `.shameraid`  •  `.sshameraid`",
             "",
-            "─── 〔 DISS 〕 ───",
+            "─── DISS ───",
             "  ▸ `.dissraid`  •  `.sdissraid`",
             "",
-            "─── 〔 DEVIL 〕 ───",
+            "─── DEVIL ───",
             "  ▸ `.devilraid`  •  `.sdevilraid`",
             "",
-            "─── 〔 KARMA 〕 ───",
+            "─── KARMA ───",
             "  ▸ `.karmaraid`  •  `.skarmaraid`",
             "",
-            "─── 〔 DOOM 〕 ───",
+            "─── DOOM ───",
             "  ▸ `.doomraid`  •  `.sdoomraid`",
             "",
         ], footer="💡 Usage: .<raid> @user <count> • .s<raid> @user to stop")
 
-        MENU_10 = build_box("🎮 GAMES & FUN", [
+        MENU_10 = build_menu("🎮 GAMES & FUN", [
             "",
-            "─── 〔 TRUTH/DARE/SITUATION 〕 ───",
+            "─── TRUTH/DARE/SITUATION ───",
             "",
             "  ▸ `.truth`     → Random truth",
             "  ▸ `.dare`      → Random dare",
             "  ▸ `.situation` → Random situation",
             "",
-            "─── 〔 RIDDLE & QUIZ (60s timer) 〕 ───",
+            "─── RIDDLE & QUIZ (60s timer) ───",
             "",
             "  ▸ `.riddle` → Paheli with timer",
             "  ▸ `.quiz`   → JEE/NEET/GK quiz",
             "",
-            "─── 〔 RPS (Rock-Paper-Scissors) 〕 ───",
+            "─── RPS (Rock-Paper-Scissors) ───",
             "",
             "  ▸ `.rps r/p/s` → Play RPS",
             "",
-            "─── 〔 TIC-TAC-TOE 〕 ───",
+            "─── TIC-TAC-TOE ───",
             "",
             "  ▸ `.ttt`       → Start game",
             "  ▸ `.ttt_move`  → Make a move (1-9)",
             "",
-            "─── 〔 DICE / FLIP 〕 ───",
+            "─── DICE / FLIP ───",
             "",
             "  ▸ `.dice` → Roll dice",
             "  ▸ `.flip` → Flip coin",
             "",
-            "─── 〔 JOKE / FACT / COMPLIMENT / QUOTE 〕 ───",
+            "─── JOKE / FACT / COMPLIMENT / QUOTE ───",
             "",
             "  ▸ `.joke`       → Random joke",
             "  ▸ `.fact`       → Interesting fact",
@@ -13260,9 +13276,9 @@ async def run_user_bot(session_string, chat_id):
             "",
         ], footer=menu_footer(".menu10"))
 
-        MENU_11A = build_box("✨ PREMIUM PART A", [
+        MENU_11A = build_menu("✨ PREMIUM PART A", [
             "",
-            "─── 〔 TEXT FORMATTING 〕 ───",
+            "─── TEXT FORMATTING ───",
             "",
             "  ▸ `.upper`    → Uppercase",
             "  ▸ `.lower`    → Lowercase",
@@ -13280,7 +13296,7 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.zalgo`    → Zalgo effect",
             "  ▸ `.leet`     → Leet speak",
             "",
-            "─── 〔 UTILITY 〕 ───",
+            "─── UTILITY ───",
             "",
             "  ▸ `.hex`       → Hex encode",
             "  ▸ `.octal`     → Octal encode",
@@ -13293,7 +13309,7 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.lettercount`→ Letters (without spaces)",
             "  ▸ `.charinfo`  → Unicode info",
             "",
-            "─── 〔 STYLISH TEXT 〕 ───",
+            "─── STYLISH TEXT ───",
             "",
             "  ▸ `.titlecase`   → Title Case",
             "  ▸ `.snake`       → snake_case",
@@ -13307,9 +13323,9 @@ async def run_user_bot(session_string, chat_id):
             "",
         ], footer=menu_footer(".menu11a"))
 
-        MENU_11B = build_box("🌟 PREMIUM PART B", [
+        MENU_11B = build_menu("🌟 PREMIUM PART B", [
             "",
-            "─── 〔 TYPING EFFECT 〕 ───",
+            "─── TYPING EFFECT ───",
             "",
             "  ▸ `.typing bold`    → Bold style",
             "  ▸ `.typing italic`  → Italic style",
@@ -13320,7 +13336,7 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.typing square`  → Squared letters",
             "  ▸ `.typing <text>`  → Bold (default)",
             "",
-            "─── 〔 MATH & FUNCTIONS 〕 ───",
+            "─── MATH & FUNCTIONS ───",
             "",
             "  ▸ `.bmi`       → BMI calculator",
             "  ▸ `.age`       → Age from DOB (YYYY-MM-DD)",
@@ -13334,14 +13350,14 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.number`    → Number properties",
             "  ▸ `.countdown` → Countdown timer",
             "",
-            "─── 〔 ENCRYPTION & HASH 〕 ───",
+            "─── ENCRYPTION & HASH ───",
             "",
             "  ▸ `.encrypt`   → Caesar cipher (shift 3)",
             "  ▸ `.decrypt`   → Decrypt Caesar",
             "  ▸ `.sha1`      → SHA-1 hash",
             "  ▸ `.sha512`    → SHA-512 hash",
             "",
-            "─── 〔 FUN GAMES 〕 ───",
+            "─── FUN GAMES ───",
             "",
             "  ▸ `.coin`    → Flip a coin",
             "  ▸ `.lucky`   → Lucky number",
@@ -13349,7 +13365,7 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.timer`   → Set a timer (seconds)",
             "  ▸ `.typetest`→ Typing speed test",
             "",
-            "─── 〔 OTHER PREMIUM 〕 ───",
+            "─── OTHER PREMIUM ───",
             "",
             "  ▸ `.afk`           → Set AFK (or `.afk off`)",
             "  ▸ `.premiumstatus` → Check status",
@@ -13359,9 +13375,9 @@ async def run_user_bot(session_string, chat_id):
             "",
         ], footer=menu_footer(".menu11b"))
 
-        MENU_12 = build_box("🔰 PROTECTION & CLEANUP", [
+        MENU_12 = build_menu("🔰 PROTECTION & CLEANUP", [
             "",
-            "─── 〔 GOD PROTECTION 〕 ───",
+            "─── GOD PROTECTION ───",
             "",
             "  ▸ `.godprotection on`     → Enable protection",
             "  ▸ `.godprotection off`    → Disable",
@@ -13370,14 +13386,14 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.setgp automute on/off`→ Toggle auto-mute",
             "  ▸ `.setgp threshold 5 10` → Mentions threshold",
             "",
-            "─── 〔 DM SHIELD (Premium) 〕 ───",
+            "─── DM SHIELD (Premium) ───",
             "",
             "  ▸ `.dmshield on/off` → Toggle",
             "  ▸ `.approve @user`   → Approve user",
             "  ▸ `.unapprove @user` → Remove approval",
             "  ▸ `.blockedlist`     → List blocked users",
             "",
-            "─── 〔 AUTO-REPLY & FILTERS 〕 ───",
+            "─── AUTO-REPLY & FILTERS ───",
             "",
             "  ▸ `.addfilter <word>`   → Add filter word",
             "  ▸ `.delfilter <word>`   → Remove filter",
@@ -13385,26 +13401,26 @@ async def run_user_bot(session_string, chat_id):
             "  ▸ `.setautoreply <text>`→ Set DM auto-reply",
             "  ▸ `.delautoreply`       → Remove auto-reply",
             "",
-            "─── 〔 NOTES (persistent) 〕 ───",
+            "─── NOTES (persistent) ───",
             "",
             "  ▸ `.notesadd <text>`   → Save note",
             "  ▸ `.noteslist`         → List notes",
             "  ▸ `.notesdelete <id>`  → Delete note",
             "",
-            "─── 〔 MASS DELETE 〕 ───",
+            "─── MASS DELETE ───",
             "",
             "  ▸ `.dltall`   → Reply to msg, delete ALL from there onwards",
             "  ▸ `.clearme`  → Delete ALL your messages in current chat",
             "",
-            "─── 〔 SANGMATA (Name History) 〕 ───",
+            "─── SANGMATA (Name History) ───",
             "",
             "  ▸ `.sangmata @user` → Show name/username history",
             "",
         ], footer=menu_footer(".menu12"))
 
-        MENU_13 = build_box("💥 PREMIUM RAIDS", [
+        MENU_13 = build_menu("💥 PREMIUM RAIDS", [
             "",
-            "─── 〔 START/STOP 〕 ───",
+            "─── START/STOP ───",
             "",
             "  ▸ `.mr`   •  `.smr`   → Raid 1",
             "  ▸ `.mr2`  •  `.smr2`  → Raid 2",
@@ -13419,9 +13435,9 @@ async def run_user_bot(session_string, chat_id):
             "",
         ], footer=menu_footer(".menu13"))
 
-        MENU_14 = build_box("🔥 PREMIUM SPAM", [
+        MENU_14 = build_menu("🔥 PREMIUM SPAM", [
             "",
-            "─── 〔 START/STOP 〕 ───",
+            "─── START/STOP ───",
             "",
             "  ▸ `.ms`   •  `.sms`   → Spam 1",
             "  ▸ `.ms2`  •  `.sms2`  → Spam 2",
@@ -13460,6 +13476,86 @@ async def run_user_bot(session_string, chat_id):
             async def menu_cmd(event, arg, text=menu_text):
                 await safe_edit(event, text)
             register_cmd(menu_name)(menu_cmd)
+
+        # ─── STOPALL COMMAND ────────────────────────────────────────────────
+        @register_cmd("stopall")
+        async def cmd_stopall(event, _):
+            # Stop all sprays
+            for chat, task in list(user_bot.spray_tasks.items()):
+                try:
+                    task.cancel()
+                except:
+                    pass
+            user_bot.spray_tasks.clear()
+
+            # Clear all raid sets
+            user_bot.reply_users.clear()
+            user_bot.rr_users.clear()
+            user_bot.flag_users.clear()
+            user_bot.hrr_users.clear()
+            user_bot.replygod_users.clear()
+            user_bot.custom_raid_users.clear()
+
+            # Fun raids
+            user_bot.shayari_raid.clear()
+            user_bot.rizz_raid.clear()
+            user_bot.pickup_raid.clear()
+            user_bot.romance_raid.clear()
+            user_bot.troll_raid.clear()
+            user_bot.ragebait_raid.clear()
+            user_bot.roast_raid.clear()
+            user_bot.pickup_users.clear()
+            user_bot.romance_users.clear()
+            user_bot.trollraid_users.clear()
+            user_bot.ragebait_users.clear()
+            user_bot.roastraid_users.clear()
+
+            # Non-abusive raids
+            user_bot.attack_raid.clear()
+            user_bot.war_raid.clear()
+            user_bot.savage_raid.clear()
+            user_bot.ultra_raid.clear()
+            user_bot.shame_raid.clear()
+            user_bot.diss_raid.clear()
+            user_bot.devil_raid.clear()
+            user_bot.karma_raid.clear()
+            user_bot.doom_raid.clear()
+            user_bot.attackraid_users.clear()
+            user_bot.warraid_users.clear()
+            user_bot.savageraid_users.clear()
+            user_bot.ultraraid_users.clear()
+            user_bot.shame_users.clear()
+            user_bot.diss_users.clear()
+            user_bot.devil_users.clear()
+            user_bot.karma_users.clear()
+            user_bot.doom_users.clear()
+
+            # PWR and OWS
+            user_bot.pwr_raid.clear()
+            user_bot.pwr_users.clear()
+            user_bot.pwr_index.clear()
+            user_bot.ows_spam.clear()
+            user_bot.ows_users.clear()
+            user_bot.ows_index.clear()
+
+            # Premium raids/spams
+            user_bot.premium_raid_targets.clear()
+            user_bot.premium_spam_targets.clear()
+
+            # Auto-tag
+            if user_bot.autotag_active:
+                user_bot.autotag_active = False
+                if user_bot.autotag_task:
+                    user_bot.autotag_task.cancel()
+                    user_bot.autotag_task = None
+
+            # NC (name changer) if active
+            if user_bot.NC_STATE.get("active"):
+                user_bot.NC_STATE["active"] = False
+                if user_bot.NC_STATE.get("task") and not user_bot.NC_STATE["task"].done():
+                    user_bot.NC_STATE["task"].cancel()
+
+            await safe_edit(event, "🛑 **All raids, spams, and sprays have been stopped!**")
 
         # ─── PROTECTION COMMANDS ──────────────────────────────────────────────
         @register_cmd("protect", premium=True)
@@ -14289,7 +14385,7 @@ async def run_user_bot(session_string, chat_id):
             for uid in targets:
                 user_bot.pwr_raid[uid] = count
                 user_bot.pwr_users.add(uid)
-                user_bot.pwr_index[uid] = 0   # start index
+                user_bot.pwr_index[uid] = 0
                 display = "∞" if count is None else f"{count} times"
                 added.append(f"{uid} ({display})")
             await safe_edit(event, f"🔥 PWR raid (sequential) started for {', '.join(added)}")
@@ -14314,50 +14410,74 @@ async def run_user_bot(session_string, chat_id):
             else:
                 await safe_edit(event, "⚠️ No active raid for these users")
 
-        # ─── OWS SPAM (SEQUENTIAL) ──────────────────────────────────────────
-        @register_cmd("ows", needs_reply=True)
+              # ─── OWS SPAM (SEQUENTIAL SPRAY LIKE DEATHGOD) ─────────────────────
+        @register_cmd("ows")
         async def cmd_ows(event, arg):
-            targets = await get_targets(event, arg)
-            if not targets:
-                return
-            count = None
-            if arg:
-                parts = arg.strip().split()
-                if parts and parts[-1].isdigit():
-                    count = int(parts[-1])
-                    if count < 1: count = 1
-                    if count > 100: count = 100
             if not ows_texts:
                 await safe_edit(event, "⚠️ OWS list is empty. Add texts to `ows_texts` in code.")
                 return
-            added = []
-            for uid in targets:
-                user_bot.ows_spam[uid] = count
-                user_bot.ows_users.add(uid)
-                user_bot.ows_index[uid] = 0
-                display = "∞" if count is None else f"{count} times"
-                added.append(f"{uid} ({display})")
-            await safe_edit(event, f"💬 OWS spam (sequential) started for {', '.join(added)}")
+            chat = event.chat_id
+            count = None
+            if arg and arg.strip().isdigit():
+                count = int(arg.strip())
+                if count < 1: count = 1
+                if count > 1000: count = 1000
+            
+            reply_to = None
+            target_user = None
+            if event.is_reply:
+                reply = await event.get_reply_message()
+                if reply:
+                    reply_to = reply.id
+                    target_user = reply.sender_id
+                    if target_user and await is_protected(target_user, "ows"):
+                        await safe_edit(event, "🚫 This user is protected from OWS.")
+                        return
+            
+            if chat in user_bot.spray_tasks and not user_bot.spray_tasks[chat].done():
+                return
+            
+            await safe_edit(event, f"💬 OWS (sequential) started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}...")
+            
+            async def loop():
+                sent = 0
+                idx = 0
+                try:
+                    while chat in user_bot.spray_tasks:
+                        if count is not None and sent >= count:
+                            break
+                        if target_user and sent % 10 == 0 and await is_protected(target_user, "ows"):
+                            await safe_send(chat, "🛑 Target is now protected. Stopping OWS.")
+                            break
+                        txt = ows_texts[idx % len(ows_texts)]
+                        idx += 1
+                        sent += 1
+                        await safe_send(chat, txt, reply_to=reply_to)
+                        if sent % 30 == 0:
+                            await asyncio.sleep(3)
+                        await asyncio.sleep(user_bot.SPRAY_DELAY)
+                except asyncio.CancelledError:
+                    pass
+                finally:
+                    user_bot.spray_tasks.pop(chat, None)
+                    if sent > 0:
+                        await safe_send(chat, f"💬 OWS done: {sent} messages sent.")
+            
+            user_bot.spray_tasks[chat] = asyncio.create_task(loop())
+            await safe_edit(event, f"💬 OWS started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}")
 
         @register_cmd("sows")
-        async def cmd_sows(event, arg):
-            targets = await get_targets(event, arg)
-            if not targets:
-                user_bot.ows_spam.clear()
-                user_bot.ows_users.clear()
-                user_bot.ows_index.clear()
-                return await safe_edit(event, "🛑 OWS spam stopped for all")
-            removed = []
-            for uid in targets:
-                if uid in user_bot.ows_spam:
-                    del user_bot.ows_spam[uid]
-                    user_bot.ows_users.discard(uid)
-                    user_bot.ows_index.pop(uid, None)
-                    removed.append(str(uid))
-            if removed:
-                await safe_edit(event, f"🛑 Removed: {', '.join(removed)}")
+        async def cmd_sows(event, _):
+            chat = event.chat_id
+            if chat in user_bot.spray_tasks:
+                try:
+                    user_bot.spray_tasks[chat].cancel()
+                except:
+                    pass
+                user_bot.spray_tasks.pop(chat, None)
+                await safe_edit(event, "🛑 OWS stopped.")
             else:
-                await safe_edit(event, "⚠️ No active spam for these users")
+                await safe_edit(event, "⚠️ No active OWS spray in this chat.")
 
         # ─── STOP ALL SPRAY ──────────────────────────────────────────────────
         @register_cmd("stopallspray")
@@ -17197,7 +17317,7 @@ async def run_user_bot(session_string, chat_id):
             cid = event.chat_id
             if cid not in user_bot.god_protection:
                 return
-            if event.sender_id in (me.id, 777000):  # skip self and service
+            if event.sender_id in (me.id, 777000):
                 return
             if not event.text:
                 return
@@ -17218,7 +17338,6 @@ async def run_user_bot(session_string, chat_id):
             sid = event.sender_id
             now = time.time()
 
-            # Mentions check
             mentions = re.findall(r'@\w+|@\d+', event.text)
             if mentions:
                 if sid not in user_bot.gp_mentions:
@@ -17234,7 +17353,6 @@ async def run_user_bot(session_string, chat_id):
                     await safe_send(cid, f"🛡️ **GP:** Mass mention detected. Action taken on `{sid}`.")
                     user_bot.gp_mentions[sid] = []
 
-            # Duplicate message check
             if sid not in user_bot.gp_duplicate:
                 user_bot.gp_duplicate[sid] = []
             user_bot.gp_duplicate[sid].append((event.text.lower().strip(), now))
@@ -17248,7 +17366,6 @@ async def run_user_bot(session_string, chat_id):
                 await _gp_take_action(cid, sid, "delete" if action != "delete" else action, auto_mute, mute_min)
                 user_bot.gp_duplicate[sid] = []
 
-            # Flood check
             if sid not in user_bot.gp_flood:
                 user_bot.gp_flood[sid] = []
             user_bot.gp_flood[sid].append(now)
@@ -17332,7 +17449,6 @@ async def run_user_bot(session_string, chat_id):
                     pass
             if not target:
                 return await safe_edit(event, "❌ Please reply to a user or mention one.")
-            # Try local history
             history = load_sangmata(target)
             if history:
                 try:
@@ -17360,7 +17476,6 @@ async def run_user_bot(session_string, chat_id):
                 msg += "</pre>"
                 await safe_edit(event, msg)
                 return
-            # Fetch from SangMata_beta_bot
             status_msg = await safe_edit(event, "<pre>❀ Fetching History From SangMata... ❀</pre>")
             bot_username = "SangMata_beta_bot"
             try:
@@ -17406,7 +17521,7 @@ async def run_user_bot(session_string, chat_id):
         # ─── DISPATCHER ──────────────────────────────────────────────────────
         @user_bot.on(events.NewMessage)
         async def dispatcher(event):
-            if await get_freeze(chat_id):  # check owner freeze
+            if await get_freeze(chat_id):
                 return
             text = event.raw_text
             if not text:
@@ -17462,19 +17577,16 @@ async def run_user_bot(session_string, chat_id):
         async def auto_handler(event):
             if await get_freeze(chat_id):
                 return
-            # Allow outgoing messages to be processed for filters (owner's own messages)
             msg_id = event.id
             if msg_id in user_bot.filter_reply_ids:
                 user_bot.filter_reply_ids.discard(msg_id)
-                return  # skip our own filter replies
+                return
 
             sender = event.sender_id
             chat = event.chat_id
             if not sender or sender in OWNER_IDS:
-                # but still check filters for owner? Owner may want to trigger own filters.
                 pass
 
-            # ─── FILTERS (per user, trigger on any message) ──────────────
             if user_bot.user_filters and event.text:
                 msg_text = event.raw_text or ""
                 for trigger, reply_data in user_bot.user_filters.items():
@@ -17492,15 +17604,13 @@ async def run_user_bot(session_string, chat_id):
                                     user_bot.filter_reply_ids.clear()
                         except Exception as e:
                             print(f"Filter reply error: {e}")
-                        break  # only first match
+                        break
 
-            # ─── REST OF AUTO HANDLER ──────────────────────────────────────
             if event.out:
                 return
             if not sender or sender in OWNER_IDS:
                 return
 
-            # Mute / Global Mute
             if sender in user_bot.muted_users or sender in user_bot.global_muted:
                 try:
                     await event.delete()
@@ -17508,7 +17618,6 @@ async def run_user_bot(session_string, chat_id):
                     pass
                 return
 
-            # Watchspam
             ws_key = (chat, sender)
             if ws_key in user_bot.watch_spam:
                 now = time.time()
@@ -17522,7 +17631,6 @@ async def run_user_bot(session_string, chat_id):
                         pass
                     return
 
-            # Group Lock
             if chat in user_bot.group_locks:
                 if not is_admin(sender):
                     try:
@@ -17531,7 +17639,6 @@ async def run_user_bot(session_string, chat_id):
                         pass
                     return
 
-            # ─── REPLY RAIDS ──────────────────────────────────────────────────
             if sender in user_bot.reply_users:
                 if await is_protected(sender, "reply"):
                     await safe_send(chat, "🚫 This user has protected themselves from reply raid.", reply_to=event.id)
@@ -17595,7 +17702,6 @@ async def run_user_bot(session_string, chat_id):
                     user_bot.reply_cooldowns[sender] = now
                     return
 
-            # ─── PWR RAID (SEQUENTIAL) ──────────────────────────────────────
             if sender in user_bot.pwr_users:
                 if await is_protected(sender, "pwr"):
                     await safe_send(chat, "🚫 This user has protected themselves from PWR raid.", reply_to=event.id)
@@ -17610,7 +17716,6 @@ async def run_user_bot(session_string, chat_id):
                     if isinstance(remaining, int):
                         user_bot.pwr_raid[sender] = remaining - 1
 
-                # Get next text sequentially
                 idx = user_bot.pwr_index.get(sender, 0)
                 if pwr_texts:
                     text_to_send = pwr_texts[idx % len(pwr_texts)]
@@ -17621,7 +17726,7 @@ async def run_user_bot(session_string, chat_id):
                 user_bot.reply_cooldowns[sender] = time.time()
                 return
 
-            # ─── OWS SPAM (SEQUENTIAL) ──────────────────────────────────────
+                       # ─── OWS SPAM (SEQUENTIAL) ──────────────────────────────────────
             if sender in user_bot.ows_users:
                 if await is_protected(sender, "ows"):
                     await safe_send(chat, "🚫 This user has protected themselves from OWS spam.", reply_to=event.id)
@@ -17635,7 +17740,6 @@ async def run_user_bot(session_string, chat_id):
                         return
                     user_bot.ows_spam[sender] = remaining - 1
 
-                # Get next text sequentially
                 idx = user_bot.ows_index.get(sender, 0)
                 if ows_texts:
                     text_to_send = ows_texts[idx % len(ows_texts)]
@@ -17646,7 +17750,6 @@ async def run_user_bot(session_string, chat_id):
                 user_bot.reply_cooldowns[sender] = time.time()
                 return
 
-            # ─── FUN RAIDS ──────────────────────────────────────────────────
             if sender in user_bot.shayari_raid:
                 if await is_protected(sender, "shayariraid"):
                     await safe_send(chat, "🚫 This user has protected themselves from Shayari raid.", reply_to=event.id)
@@ -17750,7 +17853,6 @@ async def run_user_bot(session_string, chat_id):
                 user_bot.reply_cooldowns[sender] = now
                 return
 
-            # ─── NON-ABUSIVE RAIDS ──────────────────────────────────────────
             if sender in user_bot.attackraid_users:
                 if await is_protected(sender, "attackraid"):
                     await safe_send(chat, "🚫 This user has protected themselves from attack raid.", reply_to=event.id)
@@ -17886,7 +17988,6 @@ async def run_user_bot(session_string, chat_id):
                 user_bot.reply_cooldowns[sender] = now
                 return
 
-            # ─── PREMIUM RAID AUTO HANDLERS ──────────────────────────────────
             for cmd, targets_dict in user_bot.premium_raid_targets.items():
                 if sender in targets_dict:
                     if await is_protected(sender, cmd):
@@ -17897,7 +17998,6 @@ async def run_user_bot(session_string, chat_id):
                     user_bot.reply_cooldowns[sender] = now
                     return
 
-            # ─── PREMIUM SPAM AUTO HANDLERS ──────────────────────────────────
             for cmd, targets_dict in user_bot.premium_spam_targets.items():
                 if sender in targets_dict:
                     if await is_protected(sender, cmd):
@@ -17971,7 +18071,6 @@ async def run_user_bot(session_string, chat_id):
                 except:
                     pass
 
-        # ─── SANGGMATA AUTO-TRACKING ──────────────────────────────────────
         @user_bot.on(events.NewMessage)
         async def track_name_changes(event):
             if event.out:
