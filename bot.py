@@ -400,26 +400,597 @@ running_tasks = set()
 
 print("🚀 Main Bot started...")
 
-# ─── MENU BOX BUILDER (NEW DESIGN) ───────────────────────────────
-def build_menu(title: str, lines: list, footer: str = "") -> str:
-    """Build a visually appealing menu with emojis and separators."""
-    width = 30
-    sep = "━" * width
-    menu = f"🌟 **{title}**\n"
-    menu += f"{sep}\n"
-    for line in lines:
-        if line == "":
-            menu += "\n"
-        else:
-            # Remove extra spaces and format
-            menu += f"{line}\n"
-    if footer:
-        menu += f"{sep}\n"
-        menu += f"💡 {footer}"
-    return menu
+# ─── MENU BOX BUILDER ──────────────────────────────────────────────
+def build_box(title, lines, footer="", back_cmd=None):
+    TL = "┌"
+    TR = "┐"
+    BL = "└"
+    BR = "┘"
+    H  = "─"
+    V  = "│"
+    T  = "├"
+    BT = "┤"
 
-def menu_footer(back_cmd: str) -> str:
-    return f"Use `{back_cmd}` to go back • `.menu` for main"
+    box_width = 36
+    title_line = f"{V}  {title.center(box_width - 6)}  {V}"
+    sep_line   = f"{T}{H * (box_width - 2)}{BT}"
+    top_line   = f"{TL}{H * (box_width - 2)}{TR}"
+    bot_line   = f"{BL}{H * (box_width - 2)}{BR}"
+
+    content_lines = []
+    for line in lines:
+        stripped = line.rstrip()
+        if stripped.strip() == "":
+            content_lines.append(f"{V}{' ' * (box_width - 2)}{V}")
+        else:
+            inner = stripped[:box_width - 6].ljust(box_width - 6)
+            content_lines.append(f"{V}  {inner}  {V}")
+
+    footer_line = ""
+    if footer:
+        footer_inner = footer[:box_width - 6].ljust(box_width - 6)
+        footer_line = f"{V}  {footer_inner}  {V}"
+
+    back_text = ""
+    if back_cmd:
+        back_inner = f"🔙  Back to Main Menu".ljust(box_width - 6)
+        back_text = f"{V}  {back_inner}  {V}"
+
+    parts = [top_line, title_line, sep_line]
+    parts.extend(content_lines)
+    if back_text:
+        parts.append(sep_line)
+        parts.append(back_text)
+    if footer_line:
+        parts.append(sep_line)
+        parts.append(footer_line)
+    parts.append(bot_line)
+
+    return "\n".join(parts)
+
+BACK_TO_MAIN = ".menu"
+
+MENU_MAIN = build_box("📖 MAIN MENU", [
+    "",
+    "  ◈  SYSTEM INFO  ◈",
+    "",
+    "  ✦ Owner  : ZYЯΣX ✕ ΛΣƬΉΣЯ",
+    "  ✦ Cmds   : 500+",
+    "  ✦ Prefix : `.`",
+    "",
+    "  ◈  NAVIGATION  ◈",
+    "",
+    "  ▸ .menu1   → Admin & Group",
+    "  ▸ .menu2   → Raid Engine",
+    "  ▸ .menu3   → Spam & Text",
+    "  ▸ .menu4   → Protection",
+    "  ▸ .menu5   → Tools & Utility",
+    "  ▸ .menu6   → Send & Tag",
+    "  ▸ .menu7   → Fun Meters",
+    "  ▸ .menu8   → Fun Raids",
+    "  ▸ .menu9   → Non-Abusive Raids",
+    "  ▸ .menu10  → Games & Fun",
+    "  ▸ .menu11a → Premium Part A",
+    "  ▸ .menu11b → Premium Part B",
+    "  ▸ .menu12  → Protection & Cleanup",
+    "  ▸ .menu13  → Premium Raids",
+    "  ▸ .menu14  → Premium Spam",
+    "",
+], footer="💡 Use `.cmds` for full list  •  `.ping` for latency")
+
+MENU_1 = build_box("👑 ADMIN & GROUP", [
+    "",
+    "  ◆  ADMIN  ◆",
+    "",
+    "  ▸ .admins    → List admins",
+    "  ▸ .addadmin  → Add admin (reply)",
+    "  ▸ .deladmin  → Remove admin",
+    "",
+    "  ◆  MUTE  ◆",
+    "",
+    "  ▸ .mute      → Local mute",
+    "  ▸ .unmute    → Unmute",
+    "  ▸ .gmute     → Global mute",
+    "  ▸ .gunmute   → Global unmute",
+    "  ▸ .mutelist  → Status",
+    "",
+    "  ◆  GROUP MOD  ◆",
+    "",
+    "  ▸ .lock      → Lock group",
+    "  ▸ .unlock    → Unlock",
+    "  ▸ .addbots   → Add bots",
+    "",
+    "  ◆  AUTO TAG  ◆",
+    "",
+    "  ▸ .autotag       → Tag all members",
+    "  ▸ .stopautotag   → Stop tagging",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_2 = build_box("⚔️ RAID ENGINE", [
+    "",
+    "  ◆  REPLY RAID  ◆",
+    "",
+    "  ▸ .reply    → Start reply raid",
+    "  ▸ .sreply   → Stop reply raid",
+    "",
+    "  ◆  RR (Reply+React)  ◆",
+    "",
+    "  ▸ .rr    → Start RR raid",
+    "  ▸ .srr   → Stop RR raid",
+    "",
+    "  ◆  FLAG RAID  ◆",
+    "",
+    "  ▸ .flag    → Start flag raid",
+    "  ▸ .sflag   → Stop flag raid",
+    "",
+    "  ◆  HEART RAID  ◆",
+    "",
+    "  ▸ .hrr    → Start heart raid",
+    "  ▸ .shrr   → Stop heart raid",
+    "",
+    "  ◆  GOD RAID (4 replies)  ◆",
+    "",
+    "  ▸ .replygod → Start god raid",
+    "  ▸ .sgod     → Stop god raid",
+    "",
+    "  ◆  CUSTOM RAID  ◆",
+    "",
+    "  ▸ .customraid     → Start custom",
+    "  ▸ .stopcustomraid → Stop custom",
+    "",
+    "  ◆  PWR RAID (Sequential)  ◆",
+    "",
+    "  ▸ .pwr   → Start PWR raid",
+    "  ▸ .spwr  → Stop PWR raid",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_3 = build_box("💣 SPAM & TEXT", [
+    "",
+    "  ◆  SPRAY COMMANDS  ◆",
+    "",
+    "  ▸ .spray       → Infinite spray",
+    "  ▸ .dspray      → Stop spray (current chat)",
+    "  ▸ .tspray      → Spam saved text (slot)",
+    "  ▸ .rspray      → Random saved text",
+    "  ▸ .multispray  → Rotate saved texts",
+    "  ▸ .countspray  → Exactly N times",
+    "  ▸ .spraydelay  → Adjust speed (owner)",
+    "",
+    "  ◆  TEXT MANAGER  ◆",
+    "",
+    "  ▸ .addtext    → Save text",
+    "  ▸ .listtexts  → Show saved texts",
+    "  ▸ .deltext    → Delete text (slot)",
+    "  ▸ .cleartext  → Clear all (confirm)",
+    "",
+    "  ◆  DEATHGOD  ◆",
+    "",
+    "  ▸ .deathgod   → Start deathgod",
+    "  ▸ .sdeathgod  → Stop deathgod",
+    "",
+    "  ◆  OWS SPAM (Sequential)  ◆",
+    "",
+    "  ▸ .ows   → Start OWS spam",
+    "  ▸ .sows  → Stop OWS spam",
+    "",
+    "  ◆  GLOBAL STOP  ◆",
+    "",
+    "  ▸ .stopallspray → Stop ALL sprays/raids",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_4 = build_box("🛡️ PROTECTION", [
+    "",
+    "  ◆  ANTI-DELETE  ◆",
+    "",
+    "  ▸ .antidel on/off → Toggle",
+    "  ▸ .antidel        → Status",
+    "",
+    "  ◆  WATCHSPAM  ◆",
+    "",
+    "  ▸ .watchspam    → Add watch",
+    "  ▸ .unwatchspam  → Remove watch",
+    "  ▸ .watchlist    → Active watches",
+    "",
+    "  ◆  AUTO REACT  ◆",
+    "",
+    "  ▸ .ar       → Set auto-react (emoji)",
+    "  ▸ .sar      → Disable",
+    "  ▸ .react    → React to target",
+    "  ▸ .unreact  → Remove react",
+    "  ▸ .reactlist→ All targets",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_5 = build_box("⚙️ TOOLS & UTILITY", [
+    "",
+    "  ◆  TOOLS  ◆",
+    "",
+    "  ▸ .tts     → Text-to-Speech",
+    "  ▸ .qrcode  → Generate QR",
+    "  ▸ .fancy   → Fancy styles",
+    "  ▸ .style   → Bold/Italic/Mono",
+    "  ▸ .emoji   → Add random emojis",
+    "  ▸ .calc    → Calculate expression",
+    "  ▸ .weather → Weather info",
+    "  ▸ .ip      → IP location",
+    "  ▸ .short   → Shorten URL",
+    "  ▸ .info    → User info",
+    "",
+    "  ◆  ECHO  ◆",
+    "",
+    "  ▸ .echo → Echo back text",
+    "",
+    "  ◆  MUSIC  ◆",
+    "",
+    "  ▸ .music  → Send as voice",
+    "  ▸ .dmusic → Download MP3",
+    "",
+    "  ◆  NOTES  ◆",
+    "",
+    "  ▸ .notesadd    → Save note",
+    "  ▸ .noteslist   → List notes",
+    "  ▸ .notesdelete → Delete note",
+    "",
+    "  ◆  DM SHIELD (Premium)  ◆",
+    "",
+    "  ▸ .dmshield on/off → Toggle shield",
+    "  ▸ .approve         → Approve DM user",
+    "  ▸ .unapprove       → Remove approval",
+    "  ▸ .block           → Block user",
+    "  ▸ .unblock         → Unblock user",
+    "  ▸ .blockedlist     → List blocked users",
+    "",
+    "  ◆  OWNER/ADMIN  ◆",
+    "",
+    "  ▸ .copy     → Clone profile (reply)",
+    "  ▸ .normal   → Restore original",
+    "  ▸ .banner   → Set menu banner (reply to media)",
+    "  ▸ .rembanner→ Remove banner",
+    "  ▸ .nc       → Name Changer (set/stop)",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_6 = build_box("📨 SEND & TAG", [
+    "",
+    "  ◆  SEND MESSAGE  ◆",
+    "",
+    "  ▸ .send @user <msg> → Direct message",
+    "",
+    "  ◆  TAG MULTIPLE  ◆",
+    "",
+    "  ▸ .tag @user1 msg1 @user2 msg2 ...",
+    "",
+    "  ◆  BASIC  ◆",
+    "",
+    "  ▸ .ping    → Check latency",
+    "  ▸ .status  → Bot status & uptime",
+    "  ▸ .id      → User & chat ID",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_7 = build_box("🎭 FUN METERS", [
+    "",
+    "  ◆  % METERS  ◆",
+    "",
+    "  ▸ .studmeter   → Stud %",
+    "  ▸ .looks       → Looks %",
+    "  ▸ .gay         → Gay %",
+    "  ▸ .lesbian     → Lesbian %",
+    "  ▸ .straight    → Straight %",
+    "  ▸ .bi          → Bi %",
+    "  ▸ .trans       → Trans %",
+    "  ▸ .simp        → Simp %",
+    "  ▸ .chad        → Chad %",
+    "  ▸ .friendly    → Friendly %",
+    "  ▸ .stupidmeter → Stupid %",
+    "  ▸ .sigma       → Sigma %",
+    "  ▸ .pookie      → Pookie %",
+    "  ▸ .baddie      → Baddie %",
+    "",
+    "  ◆  SCORE METERS  ◆",
+    "",
+    "  ▸ .rizz  → Rizz (1-100)",
+    "  ▸ .iq    → IQ (1-200)",
+    "",
+    "  ◆  RELATIONSHIP  ◆",
+    "",
+    "  ▸ .bestfrnd → Ask best friend",
+    "  ▸ .marriage → Propose",
+    "  ▸ .divorce  → Ask divorce",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_8 = build_box("🎯 FUN RAIDS", [
+    "",
+    "  ◆  SHAYARI RAID  ◆",
+    "      ▸ .shayariraid  •  .sshayariraid",
+    "",
+    "  ◆  RIZZ RAID  ◆",
+    "      ▸ .rizzraid  •  .srizzraid",
+    "",
+    "  ◆  PICKUP RAID  ◆",
+    "      ▸ .pickupraid  •  .spickupraid",
+    "",
+    "  ◆  ROMANCE RAID  ◆",
+    "      ▸ .romanceraid  •  .sromanceraid",
+    "",
+    "  ◆  TROLL RAID  ◆",
+    "      ▸ .trollraid  •  .strollraid",
+    "",
+    "  ◆  RAGEBAIT RAID  ◆",
+    "      ▸ .ragebaitraid  •  .sragebaitraid",
+    "",
+    "  ◆  ROAST RAID  ◆",
+    "      ▸ .roastraid  •  .sroastraid",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_9 = build_box("💢 NON-ABUSIVE RAIDS", [
+    "",
+    "  ◆  ATTACK  ◆",
+    "      ▸ .attackraid  •  .sattackraid",
+    "",
+    "  ◆  WAR  ◆",
+    "      ▸ .warraid  •  .swarraid",
+    "",
+    "  ◆  SAVAGE  ◆",
+    "      ▸ .savageraid  •  .ssavageraid",
+    "",
+    "  ◆  ULTRA  ◆",
+    "      ▸ .ultraraid  •  .sultraraid",
+    "",
+    "  ◆  SHAME  ◆",
+    "      ▸ .shameraid  •  .sshameraid",
+    "",
+    "  ◆  DISS  ◆",
+    "      ▸ .dissraid  •  .sdissraid",
+    "",
+    "  ◆  DEVIL  ◆",
+    "      ▸ .devilraid  •  .sdevilraid",
+    "",
+    "  ◆  KARMA  ◆",
+    "      ▸ .karmaraid  •  .skarmaraid",
+    "",
+    "  ◆  DOOM  ◆",
+    "      ▸ .doomraid  •  .sdoomraid",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_10 = build_box("🎮 GAMES & FUN", [
+    "",
+    "  ◆  TRUTH / DARE / SITUATION  ◆",
+    "",
+    "  ▸ .truth      → Random truth",
+    "  ▸ .dare       → Random dare",
+    "  ▸ .situation  → Random situation",
+    "",
+    "  ◆  RIDDLE & QUIZ (60s timer)  ◆",
+    "",
+    "  ▸ .riddle → Paheli with timer",
+    "  ▸ .quiz   → JEE/NEET/GK quiz",
+    "",
+    "  ◆  RPS (Rock-Paper-Scissors)  ◆",
+    "",
+    "  ▸ .rps r/p/s → Play RPS",
+    "",
+    "  ◆  TIC-TAC-TOE  ◆",
+    "",
+    "  ▸ .ttt       → Start game",
+    "  ▸ .ttt_move  → Make a move (1-9)",
+    "",
+    "  ◆  DICE / FLIP  ◆",
+    "",
+    "  ▸ .dice → Roll dice",
+    "  ▸ .flip → Flip coin",
+    "",
+    "  ◆  JOKE / FACT / COMPLIMENT / QUOTE  ◆",
+    "",
+    "  ▸ .joke       → Random joke",
+    "  ▸ .fact       → Interesting fact",
+    "  ▸ .compliment → Compliment",
+    "  ▸ .quote      → Quote",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_11A = build_box("✨ PREMIUM PART A", [
+    "",
+    "  ◆  TEXT FORMATTING  ◆",
+    "",
+    "  ▸ .upper      → Uppercase",
+    "  ▸ .lower      → Lowercase",
+    "  ▸ .reverse    → Reverse text",
+    "  ▸ .len        → Char count",
+    "  ▸ .wcount     → Word count",
+    "  ▸ .bold       → Bold",
+    "  ▸ .italic     → Italic",
+    "  ▸ .mono       → Monospace",
+    "  ▸ .camel      → camelCase",
+    "  ▸ .repeat     → Repeat N times",
+    "  ▸ .big        → Big text",
+    "  ▸ .small      → Small text",
+    "  ▸ .shadow     → Shadow text",
+    "  ▸ .zalgo      → Zalgo effect",
+    "  ▸ .leet       → Leet speak",
+    "",
+    "  ◆  UTILITY  ◆",
+    "",
+    "  ▸ .hex        → Hex encode",
+    "  ▸ .octal      → Octal encode",
+    "  ▸ .ascii      → ASCII codes",
+    "  ▸ .nato       → NATO phonetic",
+    "  ▸ .palindrome → Check palindrome",
+    "  ▸ .vowels     → Count vowels",
+    "  ▸ .wordfreq   → Word frequency",
+    "  ▸ .charcount  → Chars (with spaces)",
+    "  ▸ .lettercount→ Letters (no spaces)",
+    "  ▸ .charinfo   → Unicode info",
+    "",
+    "  ◆  STYLISH TEXT  ◆",
+    "",
+    "  ▸ .titlecase     → Title Case",
+    "  ▸ .snake         → snake_case",
+    "  ▸ .shout         → SHOUT IT!",
+    "  ▸ .mock          → mOcKiNg",
+    "  ▸ .spaceit       → S p a c e d",
+    "  ▸ .removespaces  → Remove spaces",
+    "  ▸ .clap          → 👏 Clap 👏",
+    "  ▸ .mirror        → Mirror text",
+    "  ▸ .flip_text     → Flip upside down",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_11B = build_box("🌟 PREMIUM PART B", [
+    "",
+    "  ◆  TYPING EFFECT  ◆",
+    "",
+    "  ▸ .typing bold     → Bold style",
+    "  ▸ .typing italic   → Italic style",
+    "  ▸ .typing double   → Double struck",
+    "  ▸ .typing script   → Script style",
+    "  ▸ .typing mono     → Monospace",
+    "  ▸ .typing circle   → Circled letters",
+    "  ▸ .typing square   → Squared letters",
+    "  ▸ .typing <text>   → Bold (default)",
+    "",
+    "  ◆  MATH & FUNCTIONS  ◆",
+    "",
+    "  ▸ .bmi        → BMI calculator",
+    "  ▸ .age        → Age from DOB (YYYY-MM-DD)",
+    "  ▸ .prime      → Check prime",
+    "  ▸ .factorial  → Factorial",
+    "  ▸ .fibonacci  → Fibonacci seq",
+    "  ▸ .square     → Square number",
+    "  ▸ .roman      → Roman numeral",
+    "  ▸ .table      → Multiplication table",
+    "  ▸ .percentage → Calculate %",
+    "  ▸ .number     → Number properties",
+    "  ▸ .countdown  → Countdown timer",
+    "",
+    "  ◆  ENCRYPTION & HASH  ◆",
+    "",
+    "  ▸ .encrypt  → Caesar cipher (shift 3)",
+    "  ▸ .decrypt  → Decrypt Caesar",
+    "  ▸ .sha1     → SHA-1 hash",
+    "  ▸ .sha512   → SHA-512 hash",
+    "",
+    "  ◆  FUN GAMES  ◆",
+    "",
+    "  ▸ .coin       → Flip a coin",
+    "  ▸ .lucky      → Lucky number",
+    "  ▸ .roll       → Roll a dice (max)",
+    "  ▸ .timer      → Set a timer (seconds)",
+    "  ▸ .typetest   → Typing speed test",
+    "",
+    "  ◆  OTHER PREMIUM  ◆",
+    "",
+    "  ▸ .afk           → Set AFK (or .afk off)",
+    "  ▸ .premiumstatus → Check status",
+    "  ▸ .protect       → Protect a command",
+    "  ▸ .unprotect     → Remove protection",
+    "  ▸ .protectlist   → List protected commands",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_12 = build_box("🔰 PROTECTION & CLEANUP", [
+    "",
+    "  ◆  GOD PROTECTION  ◆",
+    "",
+    "  ▸ .godprotection on      → Enable",
+    "  ▸ .godprotection off     → Disable",
+    "  ▸ .godprotection         → Show status",
+    "  ▸ .setgp action ...      → Set action",
+    "  ▸ .setgp automute on/off → Toggle",
+    "  ▸ .setgp threshold 5 10  → Threshold",
+    "",
+    "  ◆  DM SHIELD (Premium)  ◆",
+    "",
+    "  ▸ .dmshield on/off → Toggle",
+    "  ▸ .approve @user   → Approve user",
+    "  ▸ .unapprove @user → Remove approval",
+    "  ▸ .block           → Block user",
+    "  ▸ .unblock         → Unblock user",
+    "  ▸ .blockedlist     → List blocked users",
+    "",
+    "  ◆  AUTO-REPLY & FILTERS  ◆",
+    "",
+    "  ▸ .addfilter <word>   → Add filter word",
+    "  ▸ .delfilter <word>   → Remove filter",
+    "  ▸ .listfilters        → Show all filters",
+    "  ▸ .setautoreply <text>→ Set DM auto-reply",
+    "  ▸ .delautoreply       → Remove auto-reply",
+    "",
+    "  ◆  NOTES (persistent)  ◆",
+    "",
+    "  ▸ .notesadd <text>   → Save note",
+    "  ▸ .noteslist         → List notes",
+    "  ▸ .notesdelete <id>  → Delete note",
+    "",
+    "  ◆  MASS DELETE  ◆",
+    "",
+    "  ▸ .dltall   → Reply to msg, delete from there",
+    "  ▸ .clearme  → Delete ALL your messages in chat",
+    "",
+    "  ◆  SANGMATA (Name History)  ◆",
+    "",
+    "  ▸ .sangmata @user → Show name/username history",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_13 = build_box("💥 PREMIUM RAIDS", [
+    "",
+    "  ◆  START / STOP  ◆",
+    "",
+    "  ▸ .mr   •  .smr   → Raid 1",
+    "  ▸ .mr2  •  .smr2  → Raid 2",
+    "  ▸ .br   •  .sbr   → Raid 3",
+    "  ▸ .br2  •  .sbr2  → Raid 4",
+    "  ▸ .br3  •  .sbr3  → Raid 5",
+    "  ▸ .sqr  •  .ssqr  → Raid 6",
+    "  ▸ .sq2  •  .ssq2  → Raid 7",
+    "  ▸ .cr   •  .scr   → Raid 8",
+    "  ▸ .bar  •  .sbar  → Raid 9",
+    "  ▸ .gr   •  .sgr   → Raid 10",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_14 = build_box("🔥 PREMIUM SPAM", [
+    "",
+    "  ◆  START / STOP  ◆",
+    "",
+    "  ▸ .ms   •  .sms   → Spam 1",
+    "  ▸ .ms2  •  .sms2  → Spam 2",
+    "  ▸ .bs   •  .sbs   → Spam 3",
+    "  ▸ .bs2  •  .sbs2  → Spam 4",
+    "  ▸ .bs3  •  .sbs3  → Spam 5",
+    "  ▸ .sqs  •  .ssqs  → Spam 6",
+    "  ▸ .sqs2 •  .ssqs2 → Spam 7",
+    "  ▸ .cs   •  .scs   → Spam 8",
+    "  ▸ .bas  •  .sbas  → Spam 9",
+    "  ▸ .gs   •  .sgs   → Spam 10",
+    "",
+], back_cmd=BACK_TO_MAIN)
+
+MENU_MAP = {
+    "menu":     MENU_MAIN,
+    "menu1":    MENU_1,
+    "menu2":    MENU_2,
+    "menu3":    MENU_3,
+    "menu4":    MENU_4,
+    "menu5":    MENU_5,
+    "menu6":    MENU_6,
+    "menu7":    MENU_7,
+    "menu8":    MENU_8,
+    "menu9":    MENU_9,
+    "menu10":   MENU_10,
+    "menu11a":  MENU_11A,
+    "menu11b":  MENU_11B,
+    "menu12":   MENU_12,
+    "menu13":   MENU_13,
+    "menu14":   MENU_14,
+}
 
 # ─── MAIN BOT HANDLERS ────────────────────────────────────────────
 
@@ -1524,7 +2095,7 @@ async def run_user_bot(session_string, chat_id):
             "chat_id": None,
         }
 
-
+       
         # ─── NC PATTERNS ────────────────────────────────────────────────────
         HINDINC_PATTERNS = [
             "{text} चुडाकड़ ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
@@ -7776,7 +8347,7 @@ async def run_user_bot(session_string, chat_id):
         "2 𝙍𝙐𝙋𝘼𝙔 𝙆𝙄 𝙋𝙀𝙋𝙎𝙄 𝙏𝙀𝙍𝙄 𝙈𝙐𝙈𝙈𝙔 𝙎𝘼𝘽𝙎𝙀 𝙎𝙀𝙓𝙔 💋💦",
         "🇮🇳𝐵𝐻𝐴𝑅𝐴𝑇 𝐻𝐴𝑀𝐴𝑅𝐴 𝐷𝐸𝑆𝐻 𝐻 𝐴𝑈𝑅 𝑈𝑆 𝐷𝐸𝑆𝐻 𝑀𝐸 तेरी मां घर घर जाके SAMBHOG करती है ! 🛐"
         "Baap bhi bnale muje rndike",
-        "Tera baap ZA ey yaad ey tujhe",
+        "Tera baap randibaaz ey yaad ey tujhe",
         "Tu apni Maa cuda na tympass",
         "Oye unfunny swipe mtt kr",
         "Oh hello bihari tera baap bihari or tu v bihari aaukat me rha kr.",
@@ -7789,7 +8360,7 @@ async def run_user_bot(session_string, chat_id):
         "Ky? jldi likh kidde.",
         "Bihari com gang ke baap ko tag crega tu",
         "Mujhe cya tu bihari ey tmkc bs",
-        "Jaldi se ZA papa bol",
+        "Jaldi se randibaaz papa bol",
         "Side hoja bihari tery maa cud gai ab",
         "Hye pgl bhg mat ache se cud",
         "bhg ny randyke tu ajj",
@@ -8029,13 +8600,13 @@ async def run_user_bot(session_string, chat_id):
         "ugly randyke chup",
         "makafuddatery",
         "tera baap ko tag kr..?",
-        "ache se tag kr ZA bhagwn ko..",
+        "ache se tag kr randibaaz bhagwn ko..",
         "cudke pgl ny ho tu",
         "cudke pgl ho rha tu kid",
         "ma to cud gai tery hawabzi cr..",
         "bs ma codni ey tery",
         "town mei cud tery mako lekr",
-        "tery ma sexy ko bej - ZA bhgwn pe",
+        "tery ma sexy ko bej - randibaaz bhgwn pe",
         "speed pkd cp ny kr",
         "Try ma rendy",
         "Bhkk cud",
@@ -8103,8 +8674,8 @@ async def run_user_bot(session_string, chat_id):
         "Free mey cud tu randyke"
         "speed ny weak tatte terme",
         "kitni br cudwayega terymako",
-        "lund le ZA bapka",
-        "lun cus jaldi se ZA bapka",
+        "lund le randibaaz bapka",
+        "lun cus jaldi se randibaaz bapka",
         "koi ny dekh rha cudle tu",
         "cudle betichod ache se",
         "maki chut tery bs yehi janta mey",
@@ -8146,7 +8717,7 @@ async def run_user_bot(session_string, chat_id):
         "tery make sth tery bhen vi cudwa le",
         "tery make sth tery didi vi cud gai",
         "Chat fyter bnega randce codu tery mako",
-        "bol ZA daddy ey",
+        "bol randibaaz daddy ey",
         "bullyx randyke uth",
         "mar marke cud rha tu",
         "or tery ma marke cud gai"
@@ -8192,7 +8763,7 @@ async def run_user_bot(session_string, chat_id):
         "Maan le cud gya tu sun bat ab",
         "makafudda fat gya tery ruk"
         "BAAP BHI BNALE MUJE RNDIKE",
-        "TERA BAAP ZA EY YAAD EY TUJHE",
+        "TERA BAAP RANDIBAAZ EY YAAD EY TUJHE",
         "TU APNI MAA CUDA NA TYMPASS",
         "OYE UNFUNNY SWIPE MTT KR",
         "OH HELLO BIHARI TERA BAAP BIHARI OR TU V BIHARI AAUKAT ME RHA KR.",
@@ -8205,7 +8776,7 @@ async def run_user_bot(session_string, chat_id):
         "KY? JLDI LIKH KIDDE.",
         "BIHARI COM GANG KE BAAP KO TAG CREGA TU",
         "MUJHE CYA TU BIHARI EY TMKC BS",
-        "JALDI SE ZA PAPA BOL",
+        "JALDI SE RANDIBAAZ PAPA BOL",
         "SIDE HOJA BIHARI TERY MAA CUD GAI AB",
         "HYE PGL BHG MAT ACHE SE CUD",
         "BHG NY RANDYKE TU AJJ",
@@ -8445,13 +9016,13 @@ async def run_user_bot(session_string, chat_id):
         "UGLY RANDYKE CHUP",
         "MAKAFUDDATERY",
         "TERA BAAP KO TAG KR..?",
-        "ACHE SE TAG KR ZA BHAGWN KO..",
+        "ACHE SE TAG KR RANDIBAAZ BHAGWN KO..",
         "CUDKE PGL NY HO TU",
         "CUDKE PGL HO RHA TU KID",
         "MA TO CUD GAI TERY HAWABZI CR..",
         "BS MA CODNI EY TERY",
         "TOWN MEI CUD TERY MAKO LEKR",
-        "TERY MA SEXY KO BEJ - ZA BHGWN PE",
+        "TERY MA SEXY KO BEJ - RANDIBAAZ BHGWN PE",
         "SPEED PKD CP NY KR",
         "TRY MA RENDY",
         "BHKK CUD",
@@ -8519,8 +9090,8 @@ async def run_user_bot(session_string, chat_id):
         "FREE MEY CUD TU RANDYKE",
         "SPEED NY WEAK TATTE TERME",
         "KITNI BR CUDWAYEGA TERYMAKO",
-        "LUND LE ZA BAPKA",
-        "LUN CUS JALDI SE ZA BAPKA",
+        "LUND LE RANDIBAAZ BAPKA",
+        "LUN CUS JALDI SE RANDIBAAZ BAPKA",
         "KOI NY DEKH RHA CUDLE TU",
         "CUDLE BETICHOD ACHE SE",
         "MAKI CHUT TERY BS YEHI JANTA MEY",
@@ -8562,7 +9133,7 @@ async def run_user_bot(session_string, chat_id):
         "TERY MAKE STH TERY BHEN VI CUDWA LE",
         "TERY MAKE STH TERY DIDI VI CUD GAI",
         "CHAT FYTER BNEGA RANDCE CODU TERY MAKO",
-        "BOL ZA DADDY EY",
+        "BOL RANDIBAAZ DADDY EY",
         "BULLYX RANDYKE UTH",
         "MAR MARKE CUD RHA TU",
         "OR TERY MA MARKE CUD GAI",
@@ -8936,7 +9507,7 @@ async def run_user_bot(session_string, chat_id):
         "2 𝙍𝙐𝙋𝘼𝙔 𝙆𝙄 𝙋𝙀𝙋𝙎𝙄 𝙏𝙀𝙍𝙄 𝙈𝙐𝙈𝙈𝙔 𝙎𝘼𝘽𝙎𝙀 𝙎𝙀𝙓𝙔 💋💦",
         "🇮🇳𝐵𝐻𝐴𝑅𝐴𝑇 𝐻𝐴𝑀𝐴𝑅𝐴 𝐷𝐸𝑆𝐻 𝐻 𝐴𝑈𝑅 𝑈𝑆 𝐷𝐸𝑆𝐻 𝑀𝐸 तेरी मां घर घर जाके SAMBHOG करती है ! 🛐"
         "Baap bhi bnale muje rndike",
-        "Tera baap ZA ey yaad ey tujhe",
+        "Tera baap randibaaz ey yaad ey tujhe",
         "Tu apni Maa cuda na tympass",
         "Oye unfunny swipe mtt kr",
         "Oh hello bihari tera baap bihari or tu v bihari aaukat me rha kr.",
@@ -8949,7 +9520,7 @@ async def run_user_bot(session_string, chat_id):
         "Ky? jldi likh kidde.",
         "Bihari com gang ke baap ko tag crega tu",
         "Mujhe cya tu bihari ey tmkc bs",
-        "Jaldi se ZA papa bol",
+        "Jaldi se randibaaz papa bol",
         "Side hoja bihari tery maa cud gai ab",
         "Hye pgl bhg mat ache se cud",
         "bhg ny randyke tu ajj",
@@ -9189,13 +9760,13 @@ async def run_user_bot(session_string, chat_id):
         "ugly randyke chup",
         "makafuddatery",
         "tera baap ko tag kr..?",
-        "ache se tag kr ZA bhagwn ko..",
+        "ache se tag kr randibaaz bhagwn ko..",
         "cudke pgl ny ho tu",
         "cudke pgl ho rha tu kid",
         "ma to cud gai tery hawabzi cr..",
         "bs ma codni ey tery",
         "town mei cud tery mako lekr",
-        "tery ma sexy ko bej - ZA bhgwn pe",
+        "tery ma sexy ko bej - randibaaz bhgwn pe",
         "speed pkd cp ny kr",
         "Try ma rendy",
         "Bhkk cud",
@@ -9263,8 +9834,8 @@ async def run_user_bot(session_string, chat_id):
         "Free mey cud tu randyke"
         "speed ny weak tatte terme",
         "kitni br cudwayega terymako",
-        "lund le ZA bapka",
-        "lun cus jaldi se ZA bapka",
+        "lund le randibaaz bapka",
+        "lun cus jaldi se randibaaz bapka",
         "koi ny dekh rha cudle tu",
         "cudle betichod ache se",
         "maki chut tery bs yehi janta mey",
@@ -9306,7 +9877,7 @@ async def run_user_bot(session_string, chat_id):
         "tery make sth tery bhen vi cudwa le",
         "tery make sth tery didi vi cud gai",
         "Chat fyter bnega randce codu tery mako",
-        "bol ZA daddy ey",
+        "bol randibaaz daddy ey",
         "bullyx randyke uth",
         "mar marke cud rha tu",
         "or tery ma marke cud gai"
@@ -9352,7 +9923,7 @@ async def run_user_bot(session_string, chat_id):
         "Maan le cud gya tu sun bat ab",
         "makafudda fat gya tery ruk"
         "BAAP BHI BNALE MUJE RNDIKE",
-        "TERA BAAP ZA EY YAAD EY TUJHE",
+        "TERA BAAP RANDIBAAZ EY YAAD EY TUJHE",
         "TU APNI MAA CUDA NA TYMPASS",
         "OYE UNFUNNY SWIPE MTT KR",
         "OH HELLO BIHARI TERA BAAP BIHARI OR TU V BIHARI AAUKAT ME RHA KR.",
@@ -9365,7 +9936,7 @@ async def run_user_bot(session_string, chat_id):
         "KY? JLDI LIKH KIDDE.",
         "BIHARI COM GANG KE BAAP KO TAG CREGA TU",
         "MUJHE CYA TU BIHARI EY TMKC BS",
-        "JALDI SE ZA PAPA BOL",
+        "JALDI SE RANDIBAAZ PAPA BOL",
         "SIDE HOJA BIHARI TERY MAA CUD GAI AB",
         "HYE PGL BHG MAT ACHE SE CUD",
         "BHG NY RANDYKE TU AJJ",
@@ -9605,13 +10176,13 @@ async def run_user_bot(session_string, chat_id):
         "UGLY RANDYKE CHUP",
         "MAKAFUDDATERY",
         "TERA BAAP KO TAG KR..?",
-        "ACHE SE TAG KR ZA BHAGWN KO..",
+        "ACHE SE TAG KR RANDIBAAZ BHAGWN KO..",
         "CUDKE PGL NY HO TU",
         "CUDKE PGL HO RHA TU KID",
         "MA TO CUD GAI TERY HAWABZI CR..",
         "BS MA CODNI EY TERY",
         "TOWN MEI CUD TERY MAKO LEKR",
-        "TERY MA SEXY KO BEJ - ZA BHGWN PE",
+        "TERY MA SEXY KO BEJ - RANDIBAAZ BHGWN PE",
         "SPEED PKD CP NY KR",
         "TRY MA RENDY",
         "BHKK CUD",
@@ -9679,8 +10250,8 @@ async def run_user_bot(session_string, chat_id):
         "FREE MEY CUD TU RANDYKE",
         "SPEED NY WEAK TATTE TERME",
         "KITNI BR CUDWAYEGA TERYMAKO",
-        "LUND LE ZA BAPKA",
-        "LUN CUS JALDI SE ZA BAPKA",
+        "LUND LE RANDIBAAZ BAPKA",
+        "LUN CUS JALDI SE RANDIBAAZ BAPKA",
         "KOI NY DEKH RHA CUDLE TU",
         "CUDLE BETICHOD ACHE SE",
         "MAKI CHUT TERY BS YEHI JANTA MEY",
@@ -9722,7 +10293,7 @@ async def run_user_bot(session_string, chat_id):
         "TERY MAKE STH TERY BHEN VI CUDWA LE",
         "TERY MAKE STH TERY DIDI VI CUD GAI",
         "CHAT FYTER BNEGA RANDCE CODU TERY MAKO",
-        "BOL ZA DADDY EY",
+        "BOL RANDIBAAZ DADDY EY",
         "BULLYX RANDYKE UTH",
         "MAR MARKE CUD RHA TU",
         "OR TERY MA MARKE CUD GAI",
@@ -10154,7 +10725,7 @@ async def run_user_bot(session_string, chat_id):
         "2 𝙍𝙐𝙋𝘼𝙔 𝙆𝙄 𝙋𝙀𝙋𝙎𝙄 𝙏𝙀𝙍𝙄 𝙈𝙐𝙈𝙈𝙔 𝙎𝘼𝘽𝙎𝙀 𝙎𝙀𝙓𝙔 💋💦",
         "🇮🇳𝐵𝐻𝐴𝑅𝐴𝑇 𝐻𝐴𝑀𝐴𝑅𝐴 𝐷𝐸𝑆𝐻 𝐻 𝐴𝑈𝑅 𝑈𝑆 𝐷𝐸𝑆𝐻 𝑀𝐸 तेरी मां घर घर जाके SAMBHOG करती है ! 🛐"
         "Baap bhi bnale muje rndike",
-        "Tera baap ZA ey yaad ey tujhe",
+        "Tera baap randibaaz ey yaad ey tujhe",
         "Tu apni Maa cuda na tympass",
         "Oye unfunny swipe mtt kr",
         "Oh hello bihari tera baap bihari or tu v bihari aaukat me rha kr.",
@@ -10167,7 +10738,7 @@ async def run_user_bot(session_string, chat_id):
         "Ky? jldi likh kidde.",
         "Bihari com gang ke baap ko tag crega tu",
         "Mujhe cya tu bihari ey tmkc bs",
-        "Jaldi se ZA papa bol",
+        "Jaldi se randibaaz papa bol",
         "Side hoja bihari tery maa cud gai ab",
         "Hye pgl bhg mat ache se cud",
         "bhg ny randyke tu ajj",
@@ -10407,13 +10978,13 @@ async def run_user_bot(session_string, chat_id):
         "ugly randyke chup",
         "makafuddatery",
         "tera baap ko tag kr..?",
-        "ache se tag kr ZA bhagwn ko..",
+        "ache se tag kr randibaaz bhagwn ko..",
         "cudke pgl ny ho tu",
         "cudke pgl ho rha tu kid",
         "ma to cud gai tery hawabzi cr..",
         "bs ma codni ey tery",
         "town mei cud tery mako lekr",
-        "tery ma sexy ko bej - ZA bhgwn pe",
+        "tery ma sexy ko bej - randibaaz bhgwn pe",
         "speed pkd cp ny kr",
         "Try ma rendy",
         "Bhkk cud",
@@ -10481,8 +11052,8 @@ async def run_user_bot(session_string, chat_id):
         "Free mey cud tu randyke"
         "speed ny weak tatte terme",
         "kitni br cudwayega terymako",
-        "lund le ZA bapka",
-        "lun cus jaldi se ZA bapka",
+        "lund le randibaaz bapka",
+        "lun cus jaldi se randibaaz bapka",
         "koi ny dekh rha cudle tu",
         "cudle betichod ache se",
         "maki chut tery bs yehi janta mey",
@@ -10524,7 +11095,7 @@ async def run_user_bot(session_string, chat_id):
         "tery make sth tery bhen vi cudwa le",
         "tery make sth tery didi vi cud gai",
         "Chat fyter bnega randce codu tery mako",
-        "bol ZA daddy ey",
+        "bol randibaaz daddy ey",
         "bullyx randyke uth",
         "mar marke cud rha tu",
         "or tery ma marke cud gai"
@@ -10570,7 +11141,7 @@ async def run_user_bot(session_string, chat_id):
         "Maan le cud gya tu sun bat ab",
         "makafudda fat gya tery ruk"
         "BAAP BHI BNALE MUJE RNDIKE",
-        "TERA BAAP ZA EY YAAD EY TUJHE",
+        "TERA BAAP RANDIBAAZ EY YAAD EY TUJHE",
         "TU APNI MAA CUDA NA TYMPASS",
         "OYE UNFUNNY SWIPE MTT KR",
         "OH HELLO BIHARI TERA BAAP BIHARI OR TU V BIHARI AAUKAT ME RHA KR.",
@@ -10583,7 +11154,7 @@ async def run_user_bot(session_string, chat_id):
         "KY? JLDI LIKH KIDDE.",
         "BIHARI COM GANG KE BAAP KO TAG CREGA TU",
         "MUJHE CYA TU BIHARI EY TMKC BS",
-        "JALDI SE ZA PAPA BOL",
+        "JALDI SE RANDIBAAZ PAPA BOL",
         "SIDE HOJA BIHARI TERY MAA CUD GAI AB",
         "HYE PGL BHG MAT ACHE SE CUD",
         "BHG NY RANDYKE TU AJJ",
@@ -10823,13 +11394,13 @@ async def run_user_bot(session_string, chat_id):
         "UGLY RANDYKE CHUP",
         "MAKAFUDDATERY",
         "TERA BAAP KO TAG KR..?",
-        "ACHE SE TAG KR ZA BHAGWN KO..",
+        "ACHE SE TAG KR RANDIBAAZ BHAGWN KO..",
         "CUDKE PGL NY HO TU",
         "CUDKE PGL HO RHA TU KID",
         "MA TO CUD GAI TERY HAWABZI CR..",
         "BS MA CODNI EY TERY",
         "TOWN MEI CUD TERY MAKO LEKR",
-        "TERY MA SEXY KO BEJ - ZA BHGWN PE",
+        "TERY MA SEXY KO BEJ - RANDIBAAZ BHGWN PE",
         "SPEED PKD CP NY KR",
         "TRY MA RENDY",
         "BHKK CUD",
@@ -10897,8 +11468,8 @@ async def run_user_bot(session_string, chat_id):
         "FREE MEY CUD TU RANDYKE",
         "SPEED NY WEAK TATTE TERME",
         "KITNI BR CUDWAYEGA TERYMAKO",
-        "LUND LE ZA BAPKA",
-        "LUN CUS JALDI SE ZA BAPKA",
+        "LUND LE RANDIBAAZ BAPKA",
+        "LUN CUS JALDI SE RANDIBAAZ BAPKA",
         "KOI NY DEKH RHA CUDLE TU",
         "CUDLE BETICHOD ACHE SE",
         "MAKI CHUT TERY BS YEHI JANTA MEY",
@@ -10940,7 +11511,7 @@ async def run_user_bot(session_string, chat_id):
         "TERY MAKE STH TERY BHEN VI CUDWA LE",
         "TERY MAKE STH TERY DIDI VI CUD GAI",
         "CHAT FYTER BNEGA RANDCE CODU TERY MAKO",
-        "BOL ZA DADDY EY",
+        "BOL RANDIBAAZ DADDY EY",
         "BULLYX RANDYKE UTH",
         "MAR MARKE CUD RHA TU",
         "OR TERY MA MARKE CUD GAI",
@@ -12673,7 +13244,6 @@ async def run_user_bot(session_string, chat_id):
         "Maa",
         "Ke"
         ]
-       
         # ─── LOAD/SAVE FUNCTIONS ─────────────────────────────────────────────
         def load_admins():
             try:
@@ -12836,6 +13406,68 @@ async def run_user_bot(session_string, chat_id):
         user_bot.user_filters = await load_user_filters(me.id)
         user_bot.filter_reply_ids = set()
 
+        # ─── DM SHIELD FUNCTIONS ──────────────────────────────────────
+        async def get_warnings(uid: int, target_id: int) -> int:
+            async with db_pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT count FROM dm_warnings WHERE user_id = $1 AND target_id = $2",
+                    uid, target_id
+                )
+                return row["count"] if row else 0
+
+        async def add_warning(uid: int, target_id: int) -> int:
+            async with db_pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO dm_warnings (user_id, target_id, count)
+                    VALUES ($1, $2, 1)
+                    ON CONFLICT (user_id, target_id)
+                    DO UPDATE SET count = dm_warnings.count + 1
+                """, uid, target_id)
+                row = await conn.fetchrow(
+                    "SELECT count FROM dm_warnings WHERE user_id = $1 AND target_id = $2",
+                    uid, target_id
+                )
+                return row["count"]
+
+        async def reset_warnings(uid: int, target_id: int):
+            async with db_pool.acquire() as conn:
+                await conn.execute(
+                    "DELETE FROM dm_warnings WHERE user_id = $1 AND target_id = $2",
+                    uid, target_id
+                )
+
+        async def is_blocked(uid: int, target_id: int) -> bool:
+            async with db_pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT 1 FROM dm_blocked WHERE user_id = $1 AND blocked_id = $2",
+                    uid, target_id
+                )
+                return row is not None
+
+        async def block_user(uid: int, target_id: int):
+            async with db_pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO dm_blocked (user_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                    uid, target_id
+                )
+                await reset_warnings(uid, target_id)
+                try:
+                    await user_bot.block_user(target_id)
+                except Exception as e:
+                    print(f"Block error: {e}")
+
+        async def unblock_user(uid: int, target_id: int):
+            async with db_pool.acquire() as conn:
+                await conn.execute(
+                    "DELETE FROM dm_blocked WHERE user_id = $1 AND blocked_id = $2",
+                    uid, target_id
+                )
+                await reset_warnings(uid, target_id)
+                try:
+                    await user_bot.unblock_user(target_id)
+                except Exception as e:
+                    print(f"Unblock error: {e}")
+
         # ─── HELPER FUNCTIONS ──────────────────────────────────────────
         async def is_premium_user(uid: int) -> bool:
             prem = await check_premium_status(uid)
@@ -12931,553 +13563,16 @@ async def run_user_bot(session_string, chat_id):
             "freeze", "unfreeze", "stopallspray", "stopall"
         }
 
-        # ─── MENU DEFINITIONS (NEW DESIGN) ────────────────────────────────
-        MENU_MAIN = build_menu("📖 MAIN MENU", [
-            "",
-            "─── ⚡️ SYSTEM INFO ───",
-            "",
-            "  ✦ Owner  : ZYЯΣX ✕ ΛΣƬΉΣЯ",
-            "  ✦ Cmds   : 500+",
-            "  ✦ Prefix : `.`",
-            "",
-            "─── 📂 NAVIGATION ───",
-            "",
-            "  ▸ `.menu1`   → Admin, Mute, Group",
-            "  ▸ `.menu2`   → Raid Engine + PWR",
-            "  ▸ `.menu3`   → Spam, Deathgod, OWS",
-            "  ▸ `.menu4`   → Protection, React",
-            "  ▸ `.menu5`   → Tools, Music, Echo",
-            "  ▸ `.menu6`   → Send & Tag",
-            "  ▸ `.menu7`   → Fun Meters",
-            "  ▸ `.menu8`   → Fun Raids",
-            "  ▸ `.menu9`   → Non-Abusive Raids",
-            "  ▸ `.menu10`  → Games & Fun",
-            "  ▸ `.menu11a` → Premium Part A",
-            "  ▸ `.menu11b` → Premium Part B",
-            "  ▸ `.menu12`  → Protection & Cleanup",
-            "  ▸ `.menu13`  → Premium Raids",
-            "  ▸ `.menu14`  → Premium Spam",
-            "",
-        ], footer="💡 Use `.cmds` for full list • `.ping` for latency")
-
-        MENU_1 = build_menu("👑 ADMIN & GROUP", [
-            "",
-            "─── ADMIN ───",
-            "",
-            "  ▸ `.admins`    → List admins",
-            "  ▸ `.addadmin`  → Add admin (reply)",
-            "  ▸ `.deladmin`  → Remove admin",
-            "",
-            "─── MUTE ───",
-            "",
-            "  ▸ `.mute`      → Local mute",
-            "  ▸ `.unmute`    → Unmute",
-            "  ▸ `.gmute`     → Global mute",
-            "  ▸ `.gunmute`   → Global unmute",
-            "  ▸ `.mutelist`  → Status",
-            "",
-            "─── GROUP MOD ───",
-            "",
-            "  ▸ `.lock`      → Lock group",
-            "  ▸ `.unlock`    → Unlock",
-            "  ▸ `.addbots`   → Add bots",
-            "",
-            "─── AUTO TAG ───",
-            "",
-            "  ▸ `.autotag`       → Tag all members",
-            "  ▸ `.stopautotag`   → Stop tagging",
-            "",
-        ], footer=menu_footer(".menu1"))
-
-        MENU_2 = build_menu("⚔️ RAID ENGINE", [
-            "",
-            "─── REPLY RAID ───",
-            "",
-            "  ▸ `.reply`   → Start reply raid",
-            "  ▸ `.sreply`  → Stop reply raid",
-            "",
-            "─── RR (Reply+React) ───",
-            "",
-            "  ▸ `.rr`   → Start RR raid",
-            "  ▸ `.srr`  → Stop RR raid",
-            "",
-            "─── FLAG RAID ───",
-            "",
-            "  ▸ `.flag`   → Start flag raid",
-            "  ▸ `.sflag`  → Stop flag raid",
-            "",
-            "─── HEART RAID ───",
-            "",
-            "  ▸ `.hrr`   → Start heart raid",
-            "  ▸ `.shrr`  → Stop heart raid",
-            "",
-            "─── GOD RAID (4 replies) ───",
-            "",
-            "  ▸ `.replygod` → Start god raid",
-            "  ▸ `.sgod`     → Stop god raid",
-            "",
-            "─── CUSTOM RAID ───",
-            "",
-            "  ▸ `.customraid`    → Start custom",
-            "  ▸ `.stopcustomraid`→ Stop custom",
-            "",
-            "─── PWR RAID (Sequential) ───",
-            "",
-            "  ▸ `.pwr`  → Start PWR raid (sequential)",
-            "  ▸ `.spwr` → Stop PWR raid",
-            "",
-        ], footer=menu_footer(".menu2"))
-
-        MENU_3 = build_menu("💣 SPAM & TEXT", [
-            "",
-            "─── SPRAY COMMANDS ───",
-            "",
-            "  ▸ `.spray`      → Infinite spray",
-            "  ▸ `.dspray`     → Stop spray (in current chat)",
-            "  ▸ `.tspray`     → Spam saved text (slot)",
-            "  ▸ `.rspray`     → Random saved text",
-            "  ▸ `.multispray` → Rotate saved texts",
-            "  ▸ `.countspray` → Exactly N times",
-            "  ▸ `.spraydelay` → Adjust speed (owner)",
-            "",
-            "─── TEXT MANAGER ───",
-            "",
-            "  ▸ `.addtext`   → Save text",
-            "  ▸ `.listtexts` → Show saved texts",
-            "  ▸ `.deltext`   → Delete text (slot)",
-            "  ▸ `.cleartext` → Clear all (confirm)",
-            "",
-            "─── DEATHGOD ───",
-            "",
-            "  ▸ `.deathgod`  → Start deathgod",
-            "  ▸ `.sdeathgod` → Stop deathgod",
-            "",
-            "─── OWS SPAM (Sequential) ───",
-            "",
-            "  ▸ `.ows` → Start OWS spam (sequential)",
-            "  ▸ `.sows` → Stop OWS spam",
-            "",
-            "─── GLOBAL STOP ───",
-            "",
-            "  ▸ `.stopallspray` → Stop ALL sprays/raids",
-            "  ▸ `.stopall`       → Stop EVERYTHING (all raids, spams, etc.)",
-            "",
-        ], footer=menu_footer(".menu3"))
-
-        MENU_4 = build_menu("🛡️ PROTECTION", [
-            "",
-            "─── ANTI-DELETE ───",
-            "",
-            "  ▸ `.antidel on/off` → Toggle",
-            "  ▸ `.antidel` → Status",
-            "",
-            "─── WATCHSPAM ───",
-            "",
-            "  ▸ `.watchspam`   → Add watch",
-            "  ▸ `.unwatchspam` → Remove watch",
-            "  ▸ `.watchlist`   → Active watches",
-            "",
-            "─── AUTO REACT ───",
-            "",
-            "  ▸ `.ar`       → Set auto-react (emoji)",
-            "  ▸ `.sar`      → Disable",
-            "  ▸ `.react`    → React to target",
-            "  ▸ `.unreact`  → Remove react",
-            "  ▸ `.reactlist`→ All targets",
-            "",
-        ], footer=menu_footer(".menu4"))
-
-        MENU_5 = build_menu("⚙️ TOOLS & UTILITY", [
-            "",
-            "─── TOOLS ───",
-            "",
-            "  ▸ `.tts`     → Text-to-Speech",
-            "  ▸ `.qrcode`  → Generate QR",
-            "  ▸ `.fancy`   → Fancy styles",
-            "  ▸ `.style`   → Bold/Italic/Mono",
-            "  ▸ `.emoji`   → Add random emojis",
-            "  ▸ `.calc`    → Calculate expression",
-            "  ▸ `.weather` → Weather info",
-            "  ▸ `.ip`      → IP location",
-            "  ▸ `.short`   → Shorten URL",
-            "  ▸ `.info`    → User info",
-            "",
-            "─── ECHO ───",
-            "",
-            "  ▸ `.echo` → Echo back text",
-            "",
-            "─── MUSIC ───",
-            "",
-            "  ▸ `.music`  → Send as voice",
-            "  ▸ `.dmusic` → Download MP3",
-            "",
-            "─── NOTES ───",
-            "",
-            "  ▸ `.notesadd`    → Save note",
-            "  ▸ `.noteslist`   → List notes",
-            "  ▸ `.notesdelete` → Delete note",
-            "",
-            "─── DM SHIELD (Premium) ───",
-            "",
-            "  ▸ `.dmshield on/off` → Toggle shield",
-            "  ▸ `.approve`         → Approve DM user",
-            "  ▸ `.unapprove`       → Remove approval",
-            "  ▸ `.blockedlist`     → List blocked users",
-            "",
-            "─── OWNER/ADMIN ───",
-            "",
-            "  ▸ `.copy`    → Clone profile (reply)",
-            "  ▸ `.normal`  → Restore original",
-            "  ▸ `.banner`  → Set menu banner (reply to media)",
-            "  ▸ `.rembanner` → Remove banner",
-            "  ▸ `.nc`      → Name Changer (set/stop)",
-            "",
-        ], footer=menu_footer(".menu5"))
-
-        MENU_6 = build_menu("📨 SEND & TAG", [
-            "",
-            "─── SEND MESSAGE ───",
-            "",
-            "  ▸ `.send @user <msg>` → Direct message",
-            "",
-            "─── TAG MULTIPLE ───",
-            "",
-            "  ▸ `.tag @user1 msg1 @user2 msg2 ...`",
-            "",
-            "─── BASIC ───",
-            "",
-            "  ▸ `.ping`   → Check latency",
-            "  ▸ `.status` → Bot status & uptime",
-            "  ▸ `.id`     → User & chat ID",
-            "",
-        ], footer=menu_footer(".menu6"))
-
-        MENU_7 = build_menu("🎭 FUN METERS", [
-            "",
-            "─── % METERS ───",
-            "",
-            "  ▸ `.studmeter`  → Stud %",
-            "  ▸ `.looks`      → Looks %",
-            "  ▸ `.gay`        → Gay %",
-            "  ▸ `.lesbian`    → Lesbian %",
-            "  ▸ `.straight`   → Straight %",
-            "  ▸ `.bi`         → Bi %",
-            "  ▸ `.trans`      → Trans %",
-            "  ▸ `.simp`       → Simp %",
-            "  ▸ `.chad`       → Chad %",
-            "  ▸ `.friendly`   → Friendly %",
-            "  ▸ `.stupidmeter`→ Stupid %",
-            "  ▸ `.sigma`      → Sigma %",
-            "  ▸ `.pookie`     → Pookie %",
-            "  ▸ `.baddie`     → Baddie %",
-            "",
-            "─── SCORE METERS ───",
-            "",
-            "  ▸ `.rizz` → Rizz (1-100)",
-            "  ▸ `.iq`   → IQ (1-200)",
-            "",
-            "─── RELATIONSHIP ───",
-            "",
-            "  ▸ `.bestfrnd` → Ask best friend",
-            "  ▸ `.marriage` → Propose",
-            "  ▸ `.divorce`  → Ask divorce",
-            "",
-        ], footer=menu_footer(".menu7"))
-
-        MENU_8 = build_menu("🎯 FUN RAIDS", [
-            "",
-            "─── SHAYARI RAID ───",
-            "  ▸ `.shayariraid`  •  `.sshayariraid`",
-            "",
-            "─── RIZZ RAID ───",
-            "  ▸ `.rizzraid`  •  `.srizzraid`",
-            "",
-            "─── PICKUP RAID ───",
-            "  ▸ `.pickupraid`  •  `.spickupraid`",
-            "",
-            "─── ROMANCE RAID ───",
-            "  ▸ `.romanceraid`  •  `.sromanceraid`",
-            "",
-            "─── TROLL RAID ───",
-            "  ▸ `.trollraid`  •  `.strollraid`",
-            "",
-            "─── RAGEBAIT RAID ───",
-            "  ▸ `.ragebaitraid`  •  `.sragebaitraid`",
-            "",
-            "─── ROAST RAID ───",
-            "  ▸ `.roastraid`  •  `.sroastraid`",
-            "",
-        ], footer="💡 Usage: .<raid> @user <count> • .s<raid> @user to stop")
-
-        MENU_9 = build_menu("💢 NON-ABUSIVE RAIDS", [
-            "",
-            "─── ATTACK ───",
-            "  ▸ `.attackraid`  •  `.sattackraid`",
-            "",
-            "─── WAR ───",
-            "  ▸ `.warraid`  •  `.swarraid`",
-            "",
-            "─── SAVAGE ───",
-            "  ▸ `.savageraid`  •  `.ssavageraid`",
-            "",
-            "─── ULTRA ───",
-            "  ▸ `.ultraraid`  •  `.sultraraid`",
-            "",
-            "─── SHAME ───",
-            "  ▸ `.shameraid`  •  `.sshameraid`",
-            "",
-            "─── DISS ───",
-            "  ▸ `.dissraid`  •  `.sdissraid`",
-            "",
-            "─── DEVIL ───",
-            "  ▸ `.devilraid`  •  `.sdevilraid`",
-            "",
-            "─── KARMA ───",
-            "  ▸ `.karmaraid`  •  `.skarmaraid`",
-            "",
-            "─── DOOM ───",
-            "  ▸ `.doomraid`  •  `.sdoomraid`",
-            "",
-        ], footer="💡 Usage: .<raid> @user <count> • .s<raid> @user to stop")
-
-        MENU_10 = build_menu("🎮 GAMES & FUN", [
-            "",
-            "─── TRUTH/DARE/SITUATION ───",
-            "",
-            "  ▸ `.truth`     → Random truth",
-            "  ▸ `.dare`      → Random dare",
-            "  ▸ `.situation` → Random situation",
-            "",
-            "─── RIDDLE & QUIZ (60s timer) ───",
-            "",
-            "  ▸ `.riddle` → Paheli with timer",
-            "  ▸ `.quiz`   → JEE/NEET/GK quiz",
-            "",
-            "─── RPS (Rock-Paper-Scissors) ───",
-            "",
-            "  ▸ `.rps r/p/s` → Play RPS",
-            "",
-            "─── TIC-TAC-TOE ───",
-            "",
-            "  ▸ `.ttt`       → Start game",
-            "  ▸ `.ttt_move`  → Make a move (1-9)",
-            "",
-            "─── DICE / FLIP ───",
-            "",
-            "  ▸ `.dice` → Roll dice",
-            "  ▸ `.flip` → Flip coin",
-            "",
-            "─── JOKE / FACT / COMPLIMENT / QUOTE ───",
-            "",
-            "  ▸ `.joke`       → Random joke",
-            "  ▸ `.fact`       → Interesting fact",
-            "  ▸ `.compliment` → Compliment",
-            "  ▸ `.quote`      → Quote",
-            "",
-        ], footer=menu_footer(".menu10"))
-
-        MENU_11A = build_menu("✨ PREMIUM PART A", [
-            "",
-            "─── TEXT FORMATTING ───",
-            "",
-            "  ▸ `.upper`    → Uppercase",
-            "  ▸ `.lower`    → Lowercase",
-            "  ▸ `.reverse`  → Reverse text",
-            "  ▸ `.len`      → Char count",
-            "  ▸ `.wcount`   → Word count",
-            "  ▸ `.bold`     → Bold",
-            "  ▸ `.italic`   → Italic",
-            "  ▸ `.mono`     → Monospace",
-            "  ▸ `.camel`    → camelCase",
-            "  ▸ `.repeat`   → Repeat N times",
-            "  ▸ `.big`      → Big text",
-            "  ▸ `.small`    → Small text",
-            "  ▸ `.shadow`   → Shadow text",
-            "  ▸ `.zalgo`    → Zalgo effect",
-            "  ▸ `.leet`     → Leet speak",
-            "",
-            "─── UTILITY ───",
-            "",
-            "  ▸ `.hex`       → Hex encode",
-            "  ▸ `.octal`     → Octal encode",
-            "  ▸ `.ascii`     → ASCII codes",
-            "  ▸ `.nato`      → NATO phonetic",
-            "  ▸ `.palindrome`→ Check palindrome",
-            "  ▸ `.vowels`    → Count vowels",
-            "  ▸ `.wordfreq`  → Word frequency",
-            "  ▸ `.charcount` → Chars (with spaces)",
-            "  ▸ `.lettercount`→ Letters (without spaces)",
-            "  ▸ `.charinfo`  → Unicode info",
-            "",
-            "─── STYLISH TEXT ───",
-            "",
-            "  ▸ `.titlecase`   → Title Case",
-            "  ▸ `.snake`       → snake_case",
-            "  ▸ `.shout`       → SHOUT IT!",
-            "  ▸ `.mock`        → mOcKiNg",
-            "  ▸ `.spaceit`     → S p a c e d",
-            "  ▸ `.removespaces`→ Remove spaces",
-            "  ▸ `.clap`        → 👏 Clap 👏",
-            "  ▸ `.mirror`      → Mirror text",
-            "  ▸ `.flip_text`   → Flip upside down",
-            "",
-        ], footer=menu_footer(".menu11a"))
-
-        MENU_11B = build_menu("🌟 PREMIUM PART B", [
-            "",
-            "─── TYPING EFFECT ───",
-            "",
-            "  ▸ `.typing bold`    → Bold style",
-            "  ▸ `.typing italic`  → Italic style",
-            "  ▸ `.typing double`  → Double struck",
-            "  ▸ `.typing script`  → Script style",
-            "  ▸ `.typing mono`    → Monospace",
-            "  ▸ `.typing circle`  → Circled letters",
-            "  ▸ `.typing square`  → Squared letters",
-            "  ▸ `.typing <text>`  → Bold (default)",
-            "",
-            "─── MATH & FUNCTIONS ───",
-            "",
-            "  ▸ `.bmi`       → BMI calculator",
-            "  ▸ `.age`       → Age from DOB (YYYY-MM-DD)",
-            "  ▸ `.prime`     → Check prime",
-            "  ▸ `.factorial` → Factorial",
-            "  ▸ `.fibonacci` → Fibonacci seq",
-            "  ▸ `.square`    → Square number",
-            "  ▸ `.roman`     → Roman numeral",
-            "  ▸ `.table`     → Multiplication table",
-            "  ▸ `.percentage`→ Calculate %",
-            "  ▸ `.number`    → Number properties",
-            "  ▸ `.countdown` → Countdown timer",
-            "",
-            "─── ENCRYPTION & HASH ───",
-            "",
-            "  ▸ `.encrypt`   → Caesar cipher (shift 3)",
-            "  ▸ `.decrypt`   → Decrypt Caesar",
-            "  ▸ `.sha1`      → SHA-1 hash",
-            "  ▸ `.sha512`    → SHA-512 hash",
-            "",
-            "─── FUN GAMES ───",
-            "",
-            "  ▸ `.coin`    → Flip a coin",
-            "  ▸ `.lucky`   → Lucky number",
-            "  ▸ `.roll`    → Roll a dice (max)",
-            "  ▸ `.timer`   → Set a timer (seconds)",
-            "  ▸ `.typetest`→ Typing speed test",
-            "",
-            "─── OTHER PREMIUM ───",
-            "",
-            "  ▸ `.afk`           → Set AFK (or `.afk off`)",
-            "  ▸ `.premiumstatus` → Check status",
-            "  ▸ `.protect`       → Protect a command",
-            "  ▸ `.unprotect`     → Remove protection",
-            "  ▸ `.protectlist`   → List protected commands",
-            "",
-        ], footer=menu_footer(".menu11b"))
-
-        MENU_12 = build_menu("🔰 PROTECTION & CLEANUP", [
-            "",
-            "─── GOD PROTECTION ───",
-            "",
-            "  ▸ `.godprotection on`     → Enable protection",
-            "  ▸ `.godprotection off`    → Disable",
-            "  ▸ `.godprotection`        → Show status & config",
-            "  ▸ `.setgp action delete/mute/ban/kick` → Set action",
-            "  ▸ `.setgp automute on/off`→ Toggle auto-mute",
-            "  ▸ `.setgp threshold 5 10` → Mentions threshold",
-            "",
-            "─── DM SHIELD (Premium) ───",
-            "",
-            "  ▸ `.dmshield on/off` → Toggle",
-            "  ▸ `.approve @user`   → Approve user",
-            "  ▸ `.unapprove @user` → Remove approval",
-            "  ▸ `.blockedlist`     → List blocked users",
-            "",
-            "─── AUTO-REPLY & FILTERS ───",
-            "",
-            "  ▸ `.addfilter <word>`   → Add filter word",
-            "  ▸ `.delfilter <word>`   → Remove filter",
-            "  ▸ `.listfilters`        → Show all filters",
-            "  ▸ `.setautoreply <text>`→ Set DM auto-reply",
-            "  ▸ `.delautoreply`       → Remove auto-reply",
-            "",
-            "─── NOTES (persistent) ───",
-            "",
-            "  ▸ `.notesadd <text>`   → Save note",
-            "  ▸ `.noteslist`         → List notes",
-            "  ▸ `.notesdelete <id>`  → Delete note",
-            "",
-            "─── MASS DELETE ───",
-            "",
-            "  ▸ `.dltall`   → Reply to msg, delete ALL from there onwards",
-            "  ▸ `.clearme`  → Delete ALL your messages in current chat",
-            "",
-            "─── SANGMATA (Name History) ───",
-            "",
-            "  ▸ `.sangmata @user` → Show name/username history",
-            "",
-        ], footer=menu_footer(".menu12"))
-
-        MENU_13 = build_menu("💥 PREMIUM RAIDS", [
-            "",
-            "─── START/STOP ───",
-            "",
-            "  ▸ `.mr`   •  `.smr`   → Raid 1",
-            "  ▸ `.mr2`  •  `.smr2`  → Raid 2",
-            "  ▸ `.br`   •  `.sbr`   → Raid 3",
-            "  ▸ `.br2`  •  `.sbr2`  → Raid 4",
-            "  ▸ `.br3`  •  `.sbr3`  → Raid 5",
-            "  ▸ `.sqr`  •  `.ssqr`  → Raid 6",
-            "  ▸ `.sq2`  •  `.ssq2`  → Raid 7",
-            "  ▸ `.cr`   •  `.scr`   → Raid 8",
-            "  ▸ `.bar`  •  `.sbar`  → Raid 9",
-            "  ▸ `.gr`   •  `.sgr`   → Raid 10",
-            "",
-        ], footer=menu_footer(".menu13"))
-
-        MENU_14 = build_menu("🔥 PREMIUM SPAM", [
-            "",
-            "─── START/STOP ───",
-            "",
-            "  ▸ `.ms`   •  `.sms`   → Spam 1",
-            "  ▸ `.ms2`  •  `.sms2`  → Spam 2",
-            "  ▸ `.bs`   •  `.sbs`   → Spam 3",
-            "  ▸ `.bs2`  •  `.sbs2`  → Spam 4",
-            "  ▸ `.bs3`  •  `.sbs3`  → Spam 5",
-            "  ▸ `.sqs`  •  `.ssqs`  → Spam 6",
-            "  ▸ `.sqs2` •  `.ssqs2` → Spam 7",
-            "  ▸ `.cs`   •  `.scs`   → Spam 8",
-            "  ▸ `.bas`  •  `.sbas`  → Spam 9",
-            "  ▸ `.gs`   •  `.sgs`   → Spam 10",
-            "",
-        ], footer=menu_footer(".menu14"))
-
-        MENU_MAP = {
-            "menu": MENU_MAIN,
-            "menu1": MENU_1,
-            "menu2": MENU_2,
-            "menu3": MENU_3,
-            "menu4": MENU_4,
-            "menu5": MENU_5,
-            "menu6": MENU_6,
-            "menu7": MENU_7,
-            "menu8": MENU_8,
-            "menu9": MENU_9,
-            "menu10": MENU_10,
-            "menu11a": MENU_11A,
-            "menu11b": MENU_11B,
-            "menu12": MENU_12,
-            "menu13": MENU_13,
-            "menu14": MENU_14,
-        }
-
-        # ─── REGISTER MENU COMMANDS ────────────────────────────────────────
-        for menu_name, menu_text in MENU_MAP.items():
-            async def menu_cmd(event, arg, text=menu_text):
+        # ─── MENU REGISTRATION ────────────────────────────────────────────
+               # ─── MENU HANDLER ────────────────────────────────────────────────
+        @user_bot.on(events.NewMessage(pattern=r'\.(menu\d*[a-z]*)', outgoing=True))
+        async def menu_handler(event):
+            cmd = event.pattern_match.group(1).strip().lower()
+            text = MENU_MAP.get(cmd)
+            if text:
                 await safe_edit(event, text)
-            register_cmd(menu_name)(menu_cmd)
 
-        # ─── STOPALL COMMAND ────────────────────────────────────────────────
+        # ─── STOPALL ────────────────────────────────────────────────────────
         @register_cmd("stopall")
         async def cmd_stopall(event, _):
             # Stop all sprays
@@ -13495,8 +13590,6 @@ async def run_user_bot(session_string, chat_id):
             user_bot.hrr_users.clear()
             user_bot.replygod_users.clear()
             user_bot.custom_raid_users.clear()
-
-            # Fun raids
             user_bot.shayari_raid.clear()
             user_bot.rizz_raid.clear()
             user_bot.pickup_raid.clear()
@@ -13509,8 +13602,6 @@ async def run_user_bot(session_string, chat_id):
             user_bot.trollraid_users.clear()
             user_bot.ragebait_users.clear()
             user_bot.roastraid_users.clear()
-
-            # Non-abusive raids
             user_bot.attack_raid.clear()
             user_bot.war_raid.clear()
             user_bot.savage_raid.clear()
@@ -13529,27 +13620,19 @@ async def run_user_bot(session_string, chat_id):
             user_bot.devil_users.clear()
             user_bot.karma_users.clear()
             user_bot.doom_users.clear()
-
-            # PWR and OWS
             user_bot.pwr_raid.clear()
             user_bot.pwr_users.clear()
             user_bot.pwr_index.clear()
             user_bot.ows_spam.clear()
             user_bot.ows_users.clear()
             user_bot.ows_index.clear()
-
-            # Premium raids/spams
             user_bot.premium_raid_targets.clear()
             user_bot.premium_spam_targets.clear()
-
-            # Auto-tag
             if user_bot.autotag_active:
                 user_bot.autotag_active = False
                 if user_bot.autotag_task:
                     user_bot.autotag_task.cancel()
                     user_bot.autotag_task = None
-
-            # NC (name changer) if active
             if user_bot.NC_STATE.get("active"):
                 user_bot.NC_STATE["active"] = False
                 if user_bot.NC_STATE.get("task") and not user_bot.NC_STATE["task"].done():
@@ -13557,7 +13640,7 @@ async def run_user_bot(session_string, chat_id):
 
             await safe_edit(event, "🛑 **All raids, spams, and sprays have been stopped!**")
 
-        # ─── PROTECTION COMMANDS ──────────────────────────────────────────────
+        # ─── PROTECTION COMMANDS ──────────────────────────────────────────
         @register_cmd("protect", premium=True)
         async def cmd_protect(event, arg):
             if not arg:
@@ -13596,7 +13679,7 @@ async def run_user_bot(session_string, chat_id):
             plan = data['plan'].upper()
             await safe_edit(event, f"💎 **Premium Status**\n━━━━━━━━━━━━━━━\n📅 Plan: {plan}\n⏳ Expires: {expiry}\n🛡️ Protected from all raids/spam/deathgod.")
 
-        # ─── TYPING EFFECT ──────────────────────────────────────────────────────
+        # ─── TYPING EFFECT ──────────────────────────────────────────────────
         @register_cmd("typing", premium=True)
         async def cmd_typing(event, arg):
             if not arg:
@@ -14410,7 +14493,7 @@ async def run_user_bot(session_string, chat_id):
             else:
                 await safe_edit(event, "⚠️ No active raid for these users")
 
-              # ─── OWS SPAM (SEQUENTIAL SPRAY LIKE DEATHGOD) ─────────────────────
+        # ─── OWS SPAM ────────────────────────────────────────────────────────
         @register_cmd("ows")
         async def cmd_ows(event, arg):
             if not ows_texts:
@@ -14422,7 +14505,6 @@ async def run_user_bot(session_string, chat_id):
                 count = int(arg.strip())
                 if count < 1: count = 1
                 if count > 1000: count = 1000
-            
             reply_to = None
             target_user = None
             if event.is_reply:
@@ -14433,12 +14515,9 @@ async def run_user_bot(session_string, chat_id):
                     if target_user and await is_protected(target_user, "ows"):
                         await safe_edit(event, "🚫 This user is protected from OWS.")
                         return
-            
             if chat in user_bot.spray_tasks and not user_bot.spray_tasks[chat].done():
                 return
-            
             await safe_edit(event, f"💬 OWS (sequential) started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}...")
-            
             async def loop():
                 sent = 0
                 idx = 0
@@ -14462,7 +14541,6 @@ async def run_user_bot(session_string, chat_id):
                     user_bot.spray_tasks.pop(chat, None)
                     if sent > 0:
                         await safe_send(chat, f"💬 OWS done: {sent} messages sent.")
-            
             user_bot.spray_tasks[chat] = asyncio.create_task(loop())
             await safe_edit(event, f"💬 OWS started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}")
 
@@ -14492,7 +14570,6 @@ async def run_user_bot(session_string, chat_id):
                 except:
                     pass
             user_bot.spray_tasks.clear()
-            # Also stop PWR and OWS raids
             user_bot.pwr_raid.clear()
             user_bot.pwr_users.clear()
             user_bot.pwr_index.clear()
@@ -17088,7 +17165,7 @@ async def run_user_bot(session_string, chat_id):
             else:
                 await safe_edit(event, "⚠️ No active Deathgod spray in this chat.")
 
-        # ─── DM SHIELD ──────────────────────────────────────────────────────────
+        # ─── DM SHIELD COMMANDS ──────────────────────────────────────────────────
         @register_cmd("dmshield")
         async def cmd_dmshield(event, arg):
             if not is_admin(event.sender_id):
@@ -17130,6 +17207,28 @@ async def run_user_bot(session_string, chat_id):
                     user_bot.dm_approved.discard(uid)
                     removed.append(str(uid))
             await safe_edit(event, f"🛑 Removed approval: {', '.join(removed)}")
+
+        @register_cmd("block", needs_reply=True)
+        async def cmd_block(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            targets = await get_targets(event, arg)
+            if not targets:
+                return
+            for uid in targets:
+                await block_user(me.id, uid)
+            await safe_edit(event, f"✅ Blocked: {', '.join(str(uid) for uid in targets)}")
+
+        @register_cmd("unblock", needs_reply=True)
+        async def cmd_unblock(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            targets = await get_targets(event, arg)
+            if not targets:
+                return
+            for uid in targets:
+                await unblock_user(me.id, uid)
+            await safe_edit(event, f"✅ Unblocked: {', '.join(str(uid) for uid in targets)}")
 
         @register_cmd("blockedlist")
         async def cmd_blockedlist(event, _):
@@ -17378,6 +17477,33 @@ async def run_user_bot(session_string, chat_id):
                 await _gp_take_action(cid, sid, "mute" if action == "delete" else action, auto_mute, mute_min)
                 await safe_send(cid, f"🛡️ **GP:** Flood detected. Muted `{sid}`.")
                 user_bot.gp_flood[sid] = []
+
+        # ─── DM SHIELD INCOMING HANDLER ──────────────────────────────────────
+        @user_bot.on(events.NewMessage(incoming=True))
+        async def dm_shield_handler(event):
+            if event.out or not event.is_private:
+                return
+            if not user_bot.dm_shield_enabled:
+                return
+            sender = event.sender_id
+            if sender == me.id or sender in OWNER_IDS:
+                return
+            if sender in user_bot.dm_approved:
+                return
+            if await is_blocked(me.id, sender):
+                return
+            warns = await get_warnings(me.id, sender)
+            if warns >= 3:
+                await block_user(me.id, sender)
+                await safe_send(sender, "🚫 You have been blocked due to excessive messages.")
+                return
+            new_warns = await add_warning(me.id, sender)
+            left = 3 - new_warns
+            if left <= 0:
+                await block_user(me.id, sender)
+                await safe_send(sender, "🚫 You have been blocked.")
+            else:
+                await safe_send(sender, f"⚠️ **Warning {new_warns}/3**\nYou are not approved to DM this user. Please request approval.\nYou have {left} warning(s) left before being blocked.")
 
         # ─── ID ──────────────────────────────────────────────────────────────────
         @register_cmd("id")
@@ -17726,7 +17852,6 @@ async def run_user_bot(session_string, chat_id):
                 user_bot.reply_cooldowns[sender] = time.time()
                 return
 
-                       # ─── OWS SPAM (SEQUENTIAL) ──────────────────────────────────────
             if sender in user_bot.ows_users:
                 if await is_protected(sender, "ows"):
                     await safe_send(chat, "🚫 This user has protected themselves from OWS spam.", reply_to=event.id)
