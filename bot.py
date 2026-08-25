@@ -29,7 +29,6 @@ import threading
 from waitress import serve
 from telethon.tl.functions.channels import EditBannedRequest
 from telethon.tl.types import ChatBannedRights
-from telethon.tl.functions.contacts import BlockRequest, UnblockRequest
 
 # ─── CONFIGURATION ───
 API_ID = int(os.environ.get("API_ID", 0))
@@ -187,32 +186,6 @@ async def init_db():
                 reply_type TEXT DEFAULT 'text',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, trigger_word)
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS rose_filters (
-                user_id BIGINT,
-                keyword TEXT,
-                reply TEXT,
-                chat_id BIGINT DEFAULT 0,
-                PRIMARY KEY (user_id, keyword, chat_id)
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS autoreply_settings (
-                user_id BIGINT PRIMARY KEY,
-                message TEXT,
-                enabled BOOLEAN DEFAULT FALSE,
-                only_once BOOLEAN DEFAULT TRUE
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS banall_status (
-                user_id BIGINT,
-                chat_id BIGINT,
-                active BOOLEAN DEFAULT FALSE,
-                skipped_admins BOOLEAN DEFAULT TRUE,
-                PRIMARY KEY (user_id, chat_id)
             )
         """)
 
@@ -427,40 +400,43 @@ running_tasks = set()
 
 print("🚀 Main Bot started...")
 
-# ─── MENU BOX BUILDER (with <pre> for black background) ─────────────────────
+# ─── MENU BOX BUILDER ──────────────────────────────────────────────
 def build_box(title, lines, footer="", back_cmd=None):
-    W = 40  # box width
-    TL = "╔"; TR = "╗"
-    BL = "╚"; BR = "╝"
-    H  = "═"; V  = "║"
-    T  = "╠"; BT = "╣"
+    TL = "┌"
+    TR = "┐"
+    BL = "└"
+    BR = "┘"
+    H  = "─"
+    V  = "│"
+    T  = "├"
+    BT = "┤"
 
-    title_inner = f"  {title}  ".center(W - 4)
-    title_line = f"{V}  {title_inner}  {V}"
-    sep_line   = f"{T}{H * (W - 2)}{BT}"
-    top_line   = f"{TL}{H * (W - 2)}{TR}"
-    bot_line   = f"{BL}{H * (W - 2)}{BR}"
+    box_width = 36
+    title_line = f"{V}  {title.center(box_width - 6)}  {V}"
+    sep_line   = f"{T}{H * (box_width - 2)}{BT}"
+    top_line   = f"{TL}{H * (box_width - 2)}{TR}"
+    bot_line   = f"{BL}{H * (box_width - 2)}{BR}"
 
     content_lines = []
     for line in lines:
         stripped = line.rstrip()
         if stripped.strip() == "":
-            content_lines.append(f"{V}{' ' * (W - 2)}{V}")
+            content_lines.append(f"{V}{' ' * (box_width - 2)}{V}")
         else:
-            inner = stripped[:W - 6].ljust(W - 6)
+            inner = stripped[:box_width - 6].ljust(box_width - 6)
             content_lines.append(f"{V}  {inner}  {V}")
 
     footer_line = ""
     if footer:
-        footer_inner = footer[:W - 6].ljust(W - 6)
+        footer_inner = footer[:box_width - 6].ljust(box_width - 6)
         footer_line = f"{V}  {footer_inner}  {V}"
 
     back_text = ""
     if back_cmd:
-        back_inner = f"🔙  Back to Main Menu".ljust(W - 6)
+        back_inner = f"🔙  Back to Main Menu".ljust(box_width - 6)
         back_text = f"{V}  {back_inner}  {V}"
 
-    parts = ["<pre>", top_line, title_line, sep_line]
+    parts = [top_line, title_line, sep_line]
     parts.extend(content_lines)
     if back_text:
         parts.append(sep_line)
@@ -469,7 +445,7 @@ def build_box(title, lines, footer="", back_cmd=None):
         parts.append(sep_line)
         parts.append(footer_line)
     parts.append(bot_line)
-    parts.append("</pre>")
+
     return "\n".join(parts)
 
 BACK_TO_MAIN = ".menu"
@@ -666,23 +642,6 @@ MENU_5 = build_box("⚙️ TOOLS & UTILITY", [
     "  ▸ .block           → Block user",
     "  ▸ .unblock         → Unblock user",
     "  ▸ .blockedlist     → List blocked users",
-    "",
-    "  ◆  ROSE FILTERS  ◆",
-    "",
-    "  ▸ .addfilter <keyword> <reply>  → Add filter",
-    "  ▸ .delfilter <keyword>          → Remove filter",
-    "  ▸ .filters                     → List filters",
-    "",
-    "  ◆  AUTOREPLY (Premium-like)  ◆",
-    "",
-    "  ▸ .autoreply <msg>  → Set auto-reply",
-    "  ▸ .autoreply off    → Disable",
-    "  ▸ .autoreply        → Show current",
-    "",
-    "  ◆  BAN ALL (Premium)  ◆",
-    "",
-    "  ▸ .banall     → Ban all members",
-    "  ▸ .banallstop → Stop banning",
     "",
     "  ◆  OWNER/ADMIN  ◆",
     "",
@@ -957,16 +916,11 @@ MENU_12 = build_box("🔰 PROTECTION & CLEANUP", [
     "",
     "  ◆  AUTO-REPLY & FILTERS  ◆",
     "",
-    "  ▸ .addfilter <word> <reply> → Add Rose-like filter",
-    "  ▸ .delfilter <word>         → Remove filter",
-    "  ▸ .filters                  → Show all filters",
-    "  ▸ .autoreply <text>         → Set DM auto-reply (Premium-like)",
-    "  ▸ .autoreply off            → Remove auto-reply",
-    "",
-    "  ◆  BAN ALL (Premium)  ◆",
-    "",
-    "  ▸ .banall     → Ban ALL group members",
-    "  ▸ .banallstop → Stop banning",
+    "  ▸ .addfilter <word>   → Add filter word",
+    "  ▸ .delfilter <word>   → Remove filter",
+    "  ▸ .listfilters        → Show all filters",
+    "  ▸ .setautoreply <text>→ Set DM auto-reply",
+    "  ▸ .delautoreply       → Remove auto-reply",
     "",
     "  ◆  NOTES (persistent)  ◆",
     "",
@@ -2059,7 +2013,6 @@ async def run_user_bot(session_string, chat_id):
         user_bot.custom_raid_users = {}
         user_bot.group_locks = set()
         user_bot.spray_tasks = {}
-        user_bot.premium_spray_tasks = {}
         user_bot.notes = {}
         user_bot.spam_texts = []
         user_bot.menu_banner_msg = None
@@ -2133,6 +2086,7 @@ async def run_user_bot(session_string, chat_id):
             "sqs": [], "sqs2": [], "cs": [], "bas": [], "gs": []
         }
         user_bot.premium_raid_targets = {}
+        user_bot.premium_spam_targets = {}
         user_bot.NC_STATE = {
             "active": False,
             "task": None,
@@ -2140,15 +2094,8 @@ async def run_user_bot(session_string, chat_id):
             "text": None,
             "chat_id": None,
         }
-        user_bot.rose_filters = {}
-        user_bot.filtered_msgs = set()
-        user_bot.autoreply_msg = None
-        user_bot.autoreply_enabled = False
-        user_bot.autoreply_triggered = set()
-        user_bot.banall_active = False
-        user_bot.banall_task = None
 
-
+       
         # ─── NC PATTERNS ────────────────────────────────────────────────────
         HINDINC_PATTERNS = [
             "{text} चुडाकड़ ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
@@ -13297,7 +13244,6 @@ async def run_user_bot(session_string, chat_id):
         "Maa",
         "Ke"
         ]
-
         # ─── LOAD/SAVE FUNCTIONS ─────────────────────────────────────────────
         def load_admins():
             try:
@@ -13443,8 +13389,6 @@ async def run_user_bot(session_string, chat_id):
         user_bot.gp_mentions = {}
         user_bot.gp_duplicate = {}
         user_bot.gp_flood = {}
-        user_bot.gp_spam_pattern = {}
-        user_bot.gp_raid_detect = {}
 
         # ─── LOAD PER-USER FILTERS FROM DATABASE ─────────────────────
         async def load_user_filters(uid: int):
@@ -13462,30 +13406,7 @@ async def run_user_bot(session_string, chat_id):
         user_bot.user_filters = await load_user_filters(me.id)
         user_bot.filter_reply_ids = set()
 
-        # ─── LOAD ROSE FILTERS ────────────────────────────────────
-        async def load_rose_filters(uid: int):
-            async with db_pool.acquire() as conn:
-                rows = await conn.fetch("SELECT keyword, reply, chat_id FROM rose_filters WHERE user_id = $1", uid)
-            filters = {}
-            for row in rows:
-                key = (row['keyword'].lower(), row['chat_id'])
-                filters[key] = row['reply']
-            return filters
-
-        user_bot.rose_filters = await load_rose_filters(me.id)
-
-        # ─── LOAD AUTOREPLY SETTINGS ────────────────────────────
-        async def load_autoreply_settings(uid: int):
-            async with db_pool.acquire() as conn:
-                row = await conn.fetchrow("SELECT message, enabled, only_once FROM autoreply_settings WHERE user_id = $1", uid)
-            if row:
-                user_bot.autoreply_msg = row['message']
-                user_bot.autoreply_enabled = row['enabled']
-            return row
-
-        await load_autoreply_settings(me.id)
-
-        # ─── DM SHIELD DB FUNCTIONS ──────────────────────────────────────
+        # ─── DM SHIELD FUNCTIONS ──────────────────────────────────────
         async def get_warnings(uid: int, target_id: int) -> int:
             async with db_pool.acquire() as conn:
                 row = await conn.fetchrow(
@@ -13515,7 +13436,7 @@ async def run_user_bot(session_string, chat_id):
                     uid, target_id
                 )
 
-        async def is_db_blocked(uid: int, target_id: int) -> bool:
+        async def is_blocked(uid: int, target_id: int) -> bool:
             async with db_pool.acquire() as conn:
                 row = await conn.fetchrow(
                     "SELECT 1 FROM dm_blocked WHERE user_id = $1 AND blocked_id = $2",
@@ -13523,7 +13444,7 @@ async def run_user_bot(session_string, chat_id):
                 )
                 return row is not None
 
-        async def db_block_user(uid: int, target_id: int):
+        async def block_user(uid: int, target_id: int):
             async with db_pool.acquire() as conn:
                 await conn.execute(
                     "INSERT INTO dm_blocked (user_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
@@ -13531,11 +13452,11 @@ async def run_user_bot(session_string, chat_id):
                 )
                 await reset_warnings(uid, target_id)
                 try:
-                    await user_bot(BlockRequest(id=target_id))
+                    await user_bot.block_user(target_id)
                 except Exception as e:
-                    print(f"Telegram Block error: {e}")
+                    print(f"Block error: {e}")
 
-        async def db_unblock_user(uid: int, target_id: int):
+        async def unblock_user(uid: int, target_id: int):
             async with db_pool.acquire() as conn:
                 await conn.execute(
                     "DELETE FROM dm_blocked WHERE user_id = $1 AND blocked_id = $2",
@@ -13543,39 +13464,9 @@ async def run_user_bot(session_string, chat_id):
                 )
                 await reset_warnings(uid, target_id)
                 try:
-                    await user_bot(UnblockRequest(id=target_id))
+                    await user_bot.unblock_user(target_id)
                 except Exception as e:
-                    print(f"Telegram Unblock error: {e}")
-
-        async def is_db_approved(uid: int, target_id: int) -> bool:
-            async with db_pool.acquire() as conn:
-                row = await conn.fetchrow(
-                    "SELECT 1 FROM dm_approved WHERE user_id = $1 AND approved_id = $2",
-                    uid, target_id
-                )
-                return row is not None
-
-        async def db_approve_user(uid: int, target_id: int):
-            async with db_pool.acquire() as conn:
-                await conn.execute(
-                    "INSERT INTO dm_approved (user_id, approved_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                    uid, target_id
-                )
-
-        async def db_unapprove_user(uid: int, target_id: int):
-            async with db_pool.acquire() as conn:
-                await conn.execute(
-                    "DELETE FROM dm_approved WHERE user_id = $1 AND approved_id = $2",
-                    uid, target_id
-                )
-
-        async def db_get_blocked_list(uid: int):
-            async with db_pool.acquire() as conn:
-                rows = await conn.fetch(
-                    "SELECT blocked_id FROM dm_blocked WHERE user_id = $1 ORDER BY blocked_id",
-                    uid
-                )
-                return [r['blocked_id'] for r in rows]
+                    print(f"Unblock error: {e}")
 
         # ─── HELPER FUNCTIONS ──────────────────────────────────────────
         async def is_premium_user(uid: int) -> bool:
@@ -13648,6 +13539,7 @@ async def run_user_bot(session_string, chat_id):
 
         # ─── NC LOOP ─────────────────────────────────────────────────────────
         async def nc_loop(chat_id, lang, text):
+            # No patterns – do nothing
             pass
 
         # ─── COMMAND REGISTRY ──────────────────────────────────────────────
@@ -13671,7 +13563,8 @@ async def run_user_bot(session_string, chat_id):
             "freeze", "unfreeze", "stopallspray", "stopall"
         }
 
-        # ─── MENU HANDLER ────────────────────────────────────────────────
+        # ─── MENU REGISTRATION ────────────────────────────────────────────
+               # ─── MENU HANDLER ────────────────────────────────────────────────
         @user_bot.on(events.NewMessage(pattern=r'\.(menu\d*[a-z]*)', outgoing=True))
         async def menu_handler(event):
             cmd = event.pattern_match.group(1).strip().lower()
@@ -13679,510 +13572,18 @@ async def run_user_bot(session_string, chat_id):
             if text:
                 await safe_edit(event, text)
 
-        # ═════════════════════════════════════════════════════════════════
-        #  FIX 6: AUTOREPLY (Telegram Premium-style)
-        # ═════════════════════════════════════════════════════════════════
-        @register_cmd("autoreply")
-        async def cmd_autoreply(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            if not arg:
-                status = "🟢 ON" if user_bot.autoreply_enabled else "🔴 OFF"
-                msg = user_bot.autoreply_msg or "Not set"
-                await safe_edit(event, f"💬 **AutoReply Status**\nStatus: {status}\n\n📝 **Message:**\n{msg}\n\nUse:\n`.autoreply <message>` to set\n`.autoreply off` to disable")
-                return
-            if arg.strip().lower() == "off":
-                user_bot.autoreply_enabled = False
-                user_bot.autoreply_msg = None
-                user_bot.autoreply_triggered.clear()
-                async with db_pool.acquire() as conn:
-                    await conn.execute("UPDATE autoreply_settings SET enabled = FALSE, message = NULL WHERE user_id = $1", me.id)
-                await safe_edit(event, "🔕 AutoReply disabled.")
-                return
-            user_bot.autoreply_msg = arg.strip()
-            user_bot.autoreply_enabled = True
-            user_bot.autoreply_triggered.clear()
-            async with db_pool.acquire() as conn:
-                await conn.execute("""
-                    INSERT INTO autoreply_settings (user_id, message, enabled, only_once)
-                    VALUES ($1, $2, TRUE, TRUE)
-                    ON CONFLICT (user_id) DO UPDATE SET message = $2, enabled = TRUE
-                """, me.id, user_bot.autoreply_msg)
-            await safe_edit(event, f"✅ **AutoReply set** (Premium-style):\n📝 `{user_bot.autoreply_msg}`\n\nOnly replies once per user until they message again.")
-
-        # ═════════════════════════════════════════════════════════════════
-        #  FIX 5: ROSE-LIKE FILTER SYSTEM (msg user ID se jayega)
-        # ═════════════════════════════════════════════════════════════════
-        @register_cmd("addfilter")
-        async def cmd_addfilter(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            if not arg:
-                return
-            parts = arg.strip().split(maxsplit=1)
-            if len(parts) < 2:
-                await safe_edit(event, "❌ Usage: `.addfilter <keyword> <reply text>`\nExample: `.addfilter hi Hello! How are you?`")
-                return
-            keyword = parts[0].lower()
-            reply = parts[1]
-            cid = event.chat_id
-            async with db_pool.acquire() as conn:
-                await conn.execute("""
-                    INSERT INTO rose_filters (user_id, keyword, reply, chat_id)
-                    VALUES ($1, $2, $3, $4)
-                    ON CONFLICT (user_id, keyword, chat_id) DO UPDATE SET reply = $3
-                """, me.id, keyword, reply, cid)
-            user_bot.rose_filters[(keyword, cid)] = reply
-            await safe_edit(event, f"✅ **Rose Filter Added**\n📌 Keyword: `{keyword}`\n💬 Reply: `{reply}`\n\nMessage will be sent from YOUR ID.")
-
-        @register_cmd("delfilter")
-        async def cmd_delfilter(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            if not arg:
-                return
-            keyword = arg.strip().lower()
-            cid = event.chat_id
-            async with db_pool.acquire() as conn:
-                await conn.execute("DELETE FROM rose_filters WHERE user_id = $1 AND keyword = $2 AND chat_id = $3", me.id, keyword, cid)
-            user_bot.rose_filters.pop((keyword, cid), None)
-            await safe_edit(event, f"🗑️ Filter removed: `{keyword}`")
-
-        @register_cmd("filters")
-        async def cmd_filters(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            cid = event.chat_id
-            my_filters = {k: v for k, v in user_bot.rose_filters.items() if k[1] == 0 or k[1] == cid}
-            if not my_filters:
-                await safe_edit(event, "📭 No Rose filters set.\nUse `.addfilter <keyword> <reply>` to add one.")
-                return
-            msg = "📋 **Rose Filters:**\n\n"
-            for (kw, _), reply in sorted(my_filters.items()):
-                msg += f"• `{kw}` → `{reply[:50]}`\n"
-            await safe_edit(event, msg)
-
-        # ═════════════════════════════════════════════════════════════════
-        #  FIX 2: DM SHIELD - 3 warns ke baad auto-block from Telegram
-        # ═════════════════════════════════════════════════════════════════
-        @register_cmd("dmshield")
-        async def cmd_dmshield(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            arg = arg.strip().lower()
-            if not arg:
-                status = "🟢 ON" if user_bot.dm_shield_enabled else "🔴 OFF"
-                await safe_edit(event, f"🛡️ DM Shield Status: {status}\n\n3 warns ke baad Telegram se auto-block!\nUse `.dmshield on/off`")
-                return
-            if arg in ("on", "off"):
-                user_bot.dm_shield_enabled = (arg == "on")
-                await safe_edit(event, f"✅ DM Shield {'enabled' if user_bot.dm_shield_enabled else 'disabled'}")
-            else:
-                await safe_edit(event, "❌ Usage: .dmshield on/off")
-
-        # ═════════════════════════════════════════════════════════════════
-        #  FIX 3: APPROVE / UNAPPROVE / BLOCKLIST / UNBLOCK
-        # ═════════════════════════════════════════════════════════════════
-        @register_cmd("approve")
-        async def cmd_approve(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            targets = await get_targets(event, arg)
-            if not targets:
-                return
-            added = []
-            for uid in targets:
-                await db_approve_user(me.id, uid)
-                user_bot.dm_approved.add(uid)
-                added.append(str(uid))
-            await safe_edit(event, f"✅ **Approved:** {', '.join(added)}\nThese users can now DM you without warning.")
-
-        @register_cmd("unapprove")
-        async def cmd_unapprove(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            targets = await get_targets(event, arg)
-            if not targets:
-                return
-            removed = []
-            for uid in targets:
-                await db_unapprove_user(me.id, uid)
-                user_bot.dm_approved.discard(uid)
-                removed.append(str(uid))
-            await safe_edit(event, f"🛑 **Approval removed:** {', '.join(removed)}")
-
-        @register_cmd("block")
-        async def cmd_block(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            targets = await get_targets(event, arg)
-            if not targets:
-                return
-            blocked = []
-            for uid in targets:
-                await db_block_user(me.id, uid)
-                user_bot.dm_blocked.add(uid)
-                blocked.append(str(uid))
-            await safe_edit(event, f"🚫 **Blocked + Telegram Block:** {', '.join(blocked)}")
-
-        @register_cmd("unblock")
-        async def cmd_unblock(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            targets = await get_targets(event, arg)
-            if not targets:
-                return
-            unblocked = []
-            for uid in targets:
-                await db_unblock_user(me.id, uid)
-                user_bot.dm_blocked.discard(uid)
-                unblocked.append(str(uid))
-            await safe_edit(event, f"✅ **Unblocked + Telegram Unblock:** {', '.join(unblocked)}")
-
-        @register_cmd("blockedlist")
-        async def cmd_blockedlist(event, _):
-            if not is_admin(event.sender_id):
-                return
-            blocked_ids = await db_get_blocked_list(me.id)
-            if not blocked_ids:
-                await safe_edit(event, "📭 **No blocked users.**\nUse `.block` to block someone.")
-                return
-            msg = "🚫 **Blocked Users:**\n\n"
-            for uid in blocked_ids:
-                try:
-                    u = await user_bot.get_entity(uid)
-                    name = f"@{u.username}" if u.username else u.first_name or str(uid)
-                    msg += f"• `{uid}` → {name}\n"
-                except:
-                    msg += f"• `{uid}`\n"
-            await safe_edit(event, msg)
-
-        # ═════════════════════════════════════════════════════════════════
-        #  FIX 7: BAN ALL (Premium) + BAN ALL STOP
-        # ═════════════════════════════════════════════════════════════════
-        @register_cmd("banall", premium=True)
-        async def cmd_banall(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            if not await is_premium_user(event.sender_id):
-                await safe_edit(event, "❌ This is a **Premium** feature. Use `/buy` in main bot.")
-                return
-            cid = event.chat_id
-            if user_bot.banall_active:
-                await safe_edit(event, "⚠️ BanAll is already running! Use `.banallstop` to stop.")
-                return
-            await safe_edit(event, "🔨 **BanAll started!** Banning all members...\nUse `.banallstop` to stop.")
-            user_bot.banall_active = True
-            async def banall_loop():
-                try:
-                    idx = 0
-                    async for participant in user_bot.iter_participants(cid, limit=5000):
-                        if not user_bot.banall_active:
-                            break
-                        if participant.id == me.id or participant.id in OWNER_IDS:
-                            continue
-                        if participant.admin_rights or participant.creator:
-                            continue
-                        try:
-                            rights = ChatBannedRights(
-                                until_date=None,
-                                view_messages=True,
-                                send_messages=True,
-                                send_media=True,
-                                send_stickers=True,
-                                send_gifs=True,
-                                send_games=True,
-                                send_inline=True,
-                                embed_links=True,
-                                send_polls=True,
-                                change_info=True,
-                                invite_users=True,
-                                pin_messages=True
-                            )
-                            await user_bot(EditBannedRequest(cid, participant.id, rights))
-                            idx += 1
-                            if idx % 20 == 0:
-                                await safe_send(cid, f"🔨 Banned {idx} members so far...")
-                            await asyncio.sleep(0.3)
-                        except FloodWaitError as fw:
-                            await asyncio.sleep(fw.seconds + 1)
-                        except Exception:
-                            pass
-                    await safe_send(cid, f"✅ **BanAll Complete!** Banned {idx} members.")
-                except Exception as e:
-                    await safe_send(cid, f"❌ BanAll error: {str(e)[:100]}")
-                finally:
-                    user_bot.banall_active = False
-                    user_bot.banall_task = None
-            user_bot.banall_task = asyncio.create_task(banall_loop())
-
-        @register_cmd("banallstop")
-        async def cmd_banallstop(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            if not user_bot.banall_active:
-                await safe_edit(event, "⚠️ No active BanAll to stop.")
-                return
-            user_bot.banall_active = False
-            if user_bot.banall_task and not user_bot.banall_task.done():
-                user_bot.banall_task.cancel()
-                user_bot.banall_task = None
-            await safe_edit(event, "🛑 **BanAll stopped.** No more members will be banned.")
-
-        # ═════════════════════════════════════════════════════════════════
-        #  GOD PROTECTION - कोर फंक्शन्स (DB से settings लोड करना)
-        # ═════════════════════════════════════════════════════════════════
-        async def get_gp_settings(uid: int, cid: int):
-            async with db_pool.acquire() as conn:
-                row = await conn.fetchrow(
-                    "SELECT action, auto_mute, mute_min, threshold_mentions, threshold_sec FROM god_protection WHERE uid=$1 AND chat_id=$2",
-                    uid, cid
-                )
-                if row:
-                    return dict(row)
-                # default
-                return {
-                    "action": "delete",
-                    "auto_mute": True,
-                    "mute_min": 5,
-                    "threshold_mentions": 5,
-                    "threshold_sec": 10
-                }
-
-        async def update_gp_setting(uid: int, cid: int, key: str, value):
-            async with db_pool.acquire() as conn:
-                await conn.execute(
-                    f"INSERT INTO god_protection (uid, chat_id, {key}) VALUES ($1, $2, $3) "
-                    f"ON CONFLICT (uid, chat_id) DO UPDATE SET {key} = $3",
-                    uid, cid, value
-                )
-
-        # ═════════════════════════════════════════════════════════════════
-        #  FIX 4: GOD PROTECTION (auto-detect abuse/spam/raids) - UPDATED with settings
-        # ═════════════════════════════════════════════════════════════════
-        @register_cmd("godprotection")
-        async def cmd_godprotection(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            arg = arg.strip().lower()
-            if not arg:
-                status = "🟢 ON" if user_bot.god_protection_enabled else "🔴 OFF"
-                await safe_edit(event, f"🛡️ **God Protection**\nStatus: {status}\n\nAuto-detect: Spam, Abuse, Flood, Raid, Duplicate\n\nUse `.godprotection on/off`")
-                return
-            if arg in ("on", "off"):
-                user_bot.god_protection_enabled = (arg == "on")
-                await safe_edit(event, f"✅ God Protection {'enabled' if user_bot.god_protection_enabled else 'disabled'}")
-            else:
-                await safe_edit(event, "❌ Usage: `.godprotection on/off`")
-
-        @register_cmd("setgp")
-        async def cmd_setgp(event, arg):
-            if not is_admin(event.sender_id):
-                return
-            if not arg:
-                await safe_edit(event, "❌ Usage:\n`.setgp action delete|mute|kick`\n`.setgp automute on|off`\n`.setgp threshold <mentions> <seconds>`")
-                return
-            parts = arg.strip().split()
-            if len(parts) < 2:
-                await safe_edit(event, "❌ Not enough arguments.")
-                return
-            sub = parts[0].lower()
-            cid = event.chat_id
-            uid = event.sender_id
-
-            if sub == "action":
-                action = parts[1].lower()
-                if action not in ("delete", "mute", "kick"):
-                    await safe_edit(event, "❌ Action must be `delete`, `mute`, or `kick`.")
-                    return
-                await update_gp_setting(uid, cid, "action", action)
-                await safe_edit(event, f"✅ God Protection action set to `{action}` for this chat.")
-            elif sub == "automute":
-                val = parts[1].lower()
-                if val not in ("on", "off"):
-                    await safe_edit(event, "❌ Use `on` or `off`.")
-                    return
-                await update_gp_setting(uid, cid, "auto_mute", val == "on")
-                await safe_edit(event, f"✅ Auto‑mute set to `{val}`.")
-            elif sub == "threshold":
-                if len(parts) < 3:
-                    await safe_edit(event, "❌ Usage: `.setgp threshold <mentions> <seconds>`")
-                    return
-                try:
-                    mentions = int(parts[1])
-                    sec = int(parts[2])
-                    if mentions < 1 or sec < 1:
-                        raise ValueError
-                except:
-                    await safe_edit(event, "❌ Thresholds must be positive integers.")
-                    return
-                await update_gp_setting(uid, cid, "threshold_mentions", mentions)
-                await update_gp_setting(uid, cid, "threshold_sec", sec)
-                await safe_edit(event, f"✅ Threshold set: {mentions} mentions in {sec} seconds.")
-            else:
-                await safe_edit(event, "❌ Invalid sub‑command. Use `action`, `automute`, or `threshold`.")
-
-        # ─── GOD PROTECTION AUTO HANDLER (merged with existing ones) ────
-        @user_bot.on(events.NewMessage(incoming=True))
-        async def god_protection_auto_handler(event):
-            if not user_bot.god_protection_enabled:
-                return
-            if not event.chat_id:
-                return
-            if event.sender_id == me.id or event.sender_id in OWNER_IDS:
-                return
-            uid = event.sender_id
-            cid = event.chat_id
-            now = time.time()
-            gp = user_bot.gp_mentions
-            gd = user_bot.gp_duplicate
-            gf = user_bot.gp_flood
-            text = event.text or ""
-
-            # Load settings from DB
-            settings = await get_gp_settings(uid, cid)
-            threshold_mentions = settings['threshold_mentions']
-            threshold_sec = settings['threshold_sec']
-            action = settings['action']
-            auto_mute = settings['auto_mute']
-            mute_min = settings['mute_min']
-
-            # ─── DUPLICATE MSG DETECT ──────────────────────────
-            if text:
-                if uid not in gd:
-                    gd[uid] = {"text": text, "count": 1, "time": now}
-                else:
-                    if gd[uid]["text"] == text:
-                        gd[uid]["count"] += 1
-                        gd[uid]["time"] = now
-                    else:
-                        gd[uid] = {"text": text, "count": 1, "time": now}
-                if gd[uid]["count"] >= 5:
-                    try:
-                        await event.delete()
-                    except:
-                        pass
-                    if auto_mute:
-                        try:
-                            rights = ChatBannedRights(until_date=timedelta(minutes=mute_min), send_messages=True)
-                            await user_bot(EditBannedRequest(cid, uid, rights))
-                        except:
-                            pass
-                    return
-
-            # ─── MENTION / @ABUSE DETECT ─────────────────────
-            if "@" in text or text.startswith("/"):
-                if uid not in gp:
-                    gp[uid] = {"count": 1, "time": now}
-                else:
-                    if now - gp[uid]["time"] < threshold_sec:
-                        gp[uid]["count"] += 1
-                        gp[uid]["time"] = now
-                    else:
-                        gp[uid] = {"count": 1, "time": now}
-                if gp[uid]["count"] >= threshold_mentions:
-                    try:
-                        await event.delete()
-                    except:
-                        pass
-                    if auto_mute:
-                        try:
-                            rights = ChatBannedRights(until_date=timedelta(minutes=mute_min), send_messages=True)
-                            await user_bot(EditBannedRequest(cid, uid, rights))
-                        except:
-                            pass
-                        gp[uid] = {"count": 0, "time": now}
-                    # Execute action
-                    if action == "kick":
-                        try:
-                            await user_bot.kick_participant(cid, uid)
-                        except:
-                            pass
-
-            # ─── FLOOD DETECT (rapid messages) ──────────────
-            if uid not in gf:
-                gf[uid] = {"count": 1, "time": now}
-            else:
-                if now - gf[uid]["time"] < 2:
-                    gf[uid]["count"] += 1
-                    gf[uid]["time"] = now
-                else:
-                    gf[uid] = {"count": 1, "time": now}
-            if gf[uid]["count"] >= 8:
-                try:
-                    await event.delete()
-                except:
-                    pass
-                if auto_mute:
-                    try:
-                        rights = ChatBannedRights(until_date=timedelta(minutes=mute_min), send_messages=True)
-                        await user_bot(EditBannedRequest(cid, uid, rights))
-                    except:
-                        pass
-                    gf[uid] = {"count": 0, "time": now}
-
-            # ─── SPAM / ABUSE PATTERN DETECT ────────────────
-            abuse_words = ["fuck", "bhenchod", "madarchod", "chutiya", "lauda", "gand", "sex", "porn", "xxx", "bsdk", "mc", "bc", "randi"]
-            if text:
-                for word in abuse_words:
-                    if word in text.lower():
-                        try:
-                            await user_bot.delete_messages(cid, event.id)
-                        except:
-                            pass
-                        break
-
-            # ─── RAID DETECT (multiple users rapid) ─────────
-            if uid not in user_bot.gp_raid_detect:
-                user_bot.gp_raid_detect[uid] = {"count": 1, "time": now}
-            else:
-                if now - user_bot.gp_raid_detect[uid]["time"] < 5:
-                    user_bot.gp_raid_detect[uid]["count"] += 1
-                    user_bot.gp_raid_detect[uid]["time"] = now
-                else:
-                    user_bot.gp_raid_detect[uid] = {"count": 1, "time": now}
-            if user_bot.gp_raid_detect[uid]["count"] >= 6:
-                try:
-                    await event.delete()
-                except:
-                    pass
-                if auto_mute:
-                    try:
-                        rights = ChatBannedRights(
-                            until_date=timedelta(minutes=10),
-                            send_messages=True,
-                            send_media=True,
-                            send_stickers=True,
-                            send_gifs=True,
-                            send_games=True,
-                            send_inline=True,
-                            embed_links=True,
-                            send_polls=True,
-                            change_info=True,
-                            invite_users=True,
-                            pin_messages=True
-                        )
-                        await user_bot(EditBannedRequest(cid, uid, rights))
-                    except:
-                        pass
-                    await safe_send(cid, f"🚨 **Raid detected!** User `{uid}` banned for 10min.")
-                    user_bot.gp_raid_detect[uid] = {"count": 0, "time": now}
-
         # ─── STOPALL ────────────────────────────────────────────────────────
         @register_cmd("stopall")
         async def cmd_stopall(event, _):
+            # Stop all sprays
             for chat, task in list(user_bot.spray_tasks.items()):
                 try:
                     task.cancel()
                 except:
                     pass
             user_bot.spray_tasks.clear()
-            for (chat, cmd), task in list(user_bot.premium_spray_tasks.items()):
-                try:
-                    task.cancel()
-                except:
-                    pass
-            user_bot.premium_spray_tasks.clear()
+
+            # Clear all raid sets
             user_bot.reply_users.clear()
             user_bot.rr_users.clear()
             user_bot.flag_users.clear()
@@ -14226,6 +13627,7 @@ async def run_user_bot(session_string, chat_id):
             user_bot.ows_users.clear()
             user_bot.ows_index.clear()
             user_bot.premium_raid_targets.clear()
+            user_bot.premium_spam_targets.clear()
             if user_bot.autotag_active:
                 user_bot.autotag_active = False
                 if user_bot.autotag_task:
@@ -14235,7 +13637,965 @@ async def run_user_bot(session_string, chat_id):
                 user_bot.NC_STATE["active"] = False
                 if user_bot.NC_STATE.get("task") and not user_bot.NC_STATE["task"].done():
                     user_bot.NC_STATE["task"].cancel()
-            await safe_edit(event, "🛑 **All raids & sprays stopped!**")
+
+            await safe_edit(event, "🛑 **All raids, spams, and sprays have been stopped!**")
+
+        # ─── PROTECTION COMMANDS ──────────────────────────────────────────
+        @register_cmd("protect", premium=True)
+        async def cmd_protect(event, arg):
+            if not arg:
+                return
+            cmd = arg.strip().lower()
+            if cmd not in commands:
+                await safe_edit(event, f"❌ Command `.{cmd}` not found.")
+                return
+            await add_protection(event.sender_id, cmd)
+            await safe_edit(event, f"🛡️ Protected from `.{cmd}` now.")
+
+        @register_cmd("unprotect", premium=True)
+        async def cmd_unprotect(event, arg):
+            if not arg:
+                return
+            cmd = arg.strip().lower()
+            await remove_protection(event.sender_id, cmd)
+            await safe_edit(event, f"🔓 Removed protection from `.{cmd}`.")
+
+        @register_cmd("protectlist", premium=True)
+        async def cmd_protectlist(event, _):
+            prot = await get_protections(event.sender_id)
+            if not prot:
+                await safe_edit(event, "📭 You have no protected commands.")
+                return
+            msg = "🛡️ **Protected Commands:**\n" + "\n".join(f"• `.{c}`" for c in sorted(prot))
+            await safe_edit(event, msg)
+
+        @register_cmd("premiumstatus", premium=True)
+        async def cmd_premiumstatus(event, _):
+            data = await check_premium_status(event.sender_id)
+            if not data:
+                await safe_edit(event, "❌ You are not a premium user.")
+                return
+            expiry = data['expiry_date'].strftime("%Y-%m-%d %H:%M:%S")
+            plan = data['plan'].upper()
+            await safe_edit(event, f"💎 **Premium Status**\n━━━━━━━━━━━━━━━\n📅 Plan: {plan}\n⏳ Expires: {expiry}\n🛡️ Protected from all raids/spam/deathgod.")
+
+        # ─── TYPING EFFECT ──────────────────────────────────────────────────
+        @register_cmd("typing", premium=True)
+        async def cmd_typing(event, arg):
+            if not arg:
+                return
+            parts = arg.split(maxsplit=1)
+            style = "bold"
+            text = arg
+            if len(parts) == 2 and parts[0].lower() in ['bold', 'italic', 'double', 'script', 'mono', 'circle', 'square', 'default']:
+                style = parts[0].lower()
+                text = parts[1]
+            bold_map = {
+                'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵',
+                'i': '𝗶', 'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽',
+                'q': '𝗾', 'r': '𝗿', 's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅',
+                'y': '𝘆', 'z': '𝘇',
+                'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛',
+                'I': '𝗜', 'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣',
+                'Q': '𝗤', 'R': '𝗥', 'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫',
+                'Y': '𝗬', 'Z': '𝗭',
+                '0': '𝟬', '1': '𝟭', '2': '𝟮', '3': '𝟯', '4': '𝟰',
+                '5': '𝟱', '6': '𝟲', '7': '𝟳', '8': '𝟴', '9': '𝟵'
+            }
+            italic_map = {
+                'a': '𝘢', 'b': '𝘣', 'c': '𝘤', 'd': '𝘥', 'e': '𝘦', 'f': '𝘧', 'g': '𝘨', 'h': '𝘩',
+                'i': '𝘪', 'j': '𝘫', 'k': '𝘬', 'l': '𝘭', 'm': '𝘮', 'n': '𝘯', 'o': '𝘰', 'p': '𝘱',
+                'q': '𝘲', 'r': '𝘳', 's': '𝘴', 't': '𝘵', 'u': '𝘶', 'v': '𝘷', 'w': '𝘸', 'x': '𝘹',
+                'y': '𝘺', 'z': '𝘻',
+                'A': '𝘈', 'B': '𝘉', 'C': '𝘊', 'D': '𝘋', 'E': '𝘌', 'F': '𝘍', 'G': '𝘎', 'H': '𝘏',
+                'I': '𝘐', 'J': '𝘑', 'K': '𝘒', 'L': '𝘓', 'M': '𝘔', 'N': '𝘕', 'O': '𝘖', 'P': '𝘗',
+                'Q': '𝘘', 'R': '𝘙', 'S': '𝘚', 'T': '𝘛', 'U': '𝘜', 'V': '𝘝', 'W': '𝘞', 'X': '𝘟',
+                'Y': '𝘠', 'Z': '𝘡'
+            }
+            double_map = {
+                'a': '𝕒', 'b': '𝕓', 'c': '𝕔', 'd': '𝕕', 'e': '𝕖', 'f': '𝕗', 'g': '𝕘', 'h': '𝕙',
+                'i': '𝕚', 'j': '𝕛', 'k': '𝕜', 'l': '𝕝', 'm': '𝕞', 'n': '𝕟', 'o': '𝕠', 'p': '𝕡',
+                'q': '𝕢', 'r': '𝕣', 's': '𝕤', 't': '𝕥', 'u': '𝕦', 'v': '𝕧', 'w': '𝕨', 'x': '𝕩',
+                'y': '𝕪', 'z': '𝕫',
+                'A': '𝔸', 'B': '𝔹', 'C': 'ℂ', 'D': '𝔻', 'E': '𝔼', 'F': '𝔽', 'G': '𝔾', 'H': 'ℍ',
+                'I': '𝕀', 'J': '𝕁', 'K': '𝕂', 'L': '𝕃', 'M': '𝕄', 'N': 'ℕ', 'O': '𝕆', 'P': 'ℙ',
+                'Q': 'ℚ', 'R': 'ℝ', 'S': '𝕊', 'T': '𝕋', 'U': '𝕌', 'V': '𝕍', 'W': '𝕎', 'X': '𝕏',
+                'Y': '𝕐', 'Z': 'ℤ',
+                '0': '𝟘', '1': '𝟙', '2': '𝟚', '3': '𝟛', '4': '𝟜',
+                '5': '𝟝', '6': '𝟞', '7': '𝟟', '8': '𝟠', '9': '𝟡'
+            }
+            script_map = {
+                'a': '𝓪', 'b': '𝓫', 'c': '𝓬', 'd': '𝓭', 'e': '𝓮', 'f': '𝓯', 'g': '𝓰', 'h': '𝓱',
+                'i': '𝓲', 'j': '𝓳', 'k': '𝓴', 'l': '𝓵', 'm': '𝓶', 'n': '𝓷', 'o': '𝓸', 'p': '𝓹',
+                'q': '𝓺', 'r': '𝓻', 's': '𝓼', 't': '𝓽', 'u': '𝓾', 'v': '𝓿', 'w': '𝔀', 'x': '𝔁',
+                'y': '𝔂', 'z': '𝔃',
+                'A': '𝓐', 'B': '𝓑', 'C': '𝓒', 'D': '𝓓', 'E': '𝓔', 'F': '𝓕', 'G': '𝓖', 'H': '𝓗',
+                'I': '𝓘', 'J': '𝓙', 'K': '𝓚', 'L': '𝓛', 'M': '𝓜', 'N': '𝓝', 'O': '𝓞', 'P': '𝓟',
+                'Q': '𝓠', 'R': '𝓡', 'S': '𝓢', 'T': '𝓣', 'U': '𝓤', 'V': '𝓥', 'W': '𝓦', 'X': '𝓧',
+                'Y': '𝓨', 'Z': '𝓩'
+            }
+            mono_map = {
+                'a': '𝚊', 'b': '𝚋', 'c': '𝚌', 'd': '𝚍', 'e': '𝚎', 'f': '𝚏', 'g': '𝚐', 'h': '𝚑',
+                'i': '𝚒', 'j': '𝚓', 'k': '𝚔', 'l': '𝚕', 'm': '𝚖', 'n': '𝚗', 'o': '𝚘', 'p': '𝚙',
+                'q': '𝚚', 'r': '𝚛', 's': '𝚜', 't': '𝚝', 'u': '𝚞', 'v': '𝚟', 'w': '𝚠', 'x': '𝚡',
+                'y': '𝚢', 'z': '𝚣',
+                'A': '𝙰', 'B': '𝙱', 'C': '𝙲', 'D': '𝙳', 'E': '𝙴', 'F': '𝙵', 'G': '𝙶', 'H': '𝙷',
+                'I': '𝙸', 'J': '𝙹', 'K': '𝙺', 'L': '𝙻', 'M': '𝙼', 'N': '𝙽', 'O': '𝙾', 'P': '𝙿',
+                'Q': '𝚀', 'R': '𝚁', 'S': '𝚂', 'T': '𝚃', 'U': '𝚄', 'V': '𝚅', 'W': '𝚆', 'X': '𝚇',
+                'Y': '𝚈', 'Z': '𝚉'
+            }
+            circle_map = {
+                'a': 'ⓐ', 'b': 'ⓑ', 'c': 'ⓒ', 'd': 'ⓓ', 'e': 'ⓔ', 'f': 'ⓕ', 'g': 'ⓖ', 'h': 'ⓗ',
+                'i': 'ⓘ', 'j': 'ⓙ', 'k': 'ⓚ', 'l': 'ⓛ', 'm': 'ⓜ', 'n': 'ⓝ', 'o': 'ⓞ', 'p': 'ⓟ',
+                'q': 'ⓠ', 'r': 'ⓡ', 's': 'ⓢ', 't': 'ⓣ', 'u': 'ⓤ', 'v': 'ⓥ', 'w': 'ⓦ', 'x': 'ⓧ',
+                'y': 'ⓨ', 'z': 'ⓩ',
+                'A': 'Ⓐ', 'B': 'Ⓑ', 'C': 'Ⓒ', 'D': 'Ⓓ', 'E': 'Ⓔ', 'F': 'Ⓕ', 'G': 'Ⓖ', 'H': 'Ⓗ',
+                'I': 'Ⓘ', 'J': 'Ⓙ', 'K': 'Ⓚ', 'L': 'Ⓛ', 'M': 'Ⓜ', 'N': 'Ⓝ', 'O': 'Ⓞ', 'P': 'Ⓟ',
+                'Q': 'Ⓠ', 'R': 'Ⓡ', 'S': 'Ⓢ', 'T': 'Ⓣ', 'U': 'Ⓤ', 'V': 'Ⓥ', 'W': 'Ⓦ', 'X': 'Ⓧ',
+                'Y': 'Ⓨ', 'Z': 'Ⓩ',
+                '0': '⓪', '1': '①', '2': '②', '3': '③', '4': '④',
+                '5': '⑤', '6': '⑥', '7': '⑦', '8': '⑧', '9': '⑨'
+            }
+            square_map = {
+                'a': '🅰', 'b': '🅱', 'c': '🅲', 'd': '🅳', 'e': '🅴', 'f': '🅵', 'g': '🅶', 'h': '🅷',
+                'i': '🅸', 'j': '🅹', 'k': '🅺', 'l': '🅻', 'm': '🅼', 'n': '🅽', 'o': '🅾', 'p': '🅿',
+                'q': '🆀', 'r': '🆁', 's': '🆂', 't': '🆃', 'u': '🆄', 'v': '🆅', 'w': '🆆', 'x': '🆇',
+                'y': '🆈', 'z': '🆉',
+                '0': '🅾', '1': '🆒', '2': '🆓', '3': '🆔', '4': '🆕',
+                '5': '🆖', '6': '🆗', '7': '🆘', '8': '🆙', '9': '🆚'
+            }
+            font_maps = {
+                'bold': bold_map,
+                'italic': italic_map,
+                'double': double_map,
+                'script': script_map,
+                'mono': mono_map,
+                'circle': circle_map,
+                'square': square_map,
+                'default': {}
+            }
+            char_map = font_maps.get(style, bold_map)
+            stylish_text = ''.join(char_map.get(c, c) for c in text) if style != 'default' else text
+            try:
+                await event.delete()
+            except:
+                pass
+            msg = await user_bot.send_message(event.chat_id, "✍️ ")
+            for i in range(1, len(stylish_text) + 1):
+                current_text = f"✍️ {stylish_text[:i]}"
+                try:
+                    await msg.edit(current_text)
+                    await asyncio.sleep(random.uniform(0.15, 0.6))
+                except Exception:
+                    pass
+            try:
+                await msg.edit(f"✍️ {stylish_text}")
+            except:
+                pass
+
+        # ─── AFK ──────────────────────────────────────────────────────────────
+        user_bot.afk_data = {}
+        @register_cmd("afk", premium=True)
+        async def cmd_afk(event, arg):
+            uid = event.sender_id
+            if arg and arg.lower() == "off":
+                if uid in user_bot.afk_data:
+                    del user_bot.afk_data[uid]
+                    await safe_edit(event, "✅ AFK removed.")
+                else:
+                    await safe_edit(event, "❌ You were not AFK.")
+                return
+            reason = arg or "I'm away, will reply later."
+            user_bot.afk_data[uid] = {"reason": reason, "time": time.time()}
+            await safe_edit(event, f"✅ AFK set: {reason}")
+
+        @user_bot.on(events.NewMessage)
+        async def afk_handler(event):
+            if event.out:
+                return
+            sender = event.sender_id
+            if sender in user_bot.afk_data:
+                text = event.raw_text or ""
+                if "@" + me.username in text or "tg://user?id=" + str(me.id) in text or me.id in [x.id for x in event.mentions if hasattr(x, 'id')]:
+                    data = user_bot.afk_data[sender]
+                    await safe_send(event.chat_id, f"🤖 **AFK:** {data['reason']} (since {int(time.time() - data['time'])}s ago)", reply_to=event.id)
+
+        # ─── TEXT FORMATTING ──────────────────────────────────────────────────
+        def format_text_func(name, transform):
+            @register_cmd(name, premium=True)
+            async def cmd(event, arg):
+                if not arg:
+                    return
+                result = transform(arg)
+                await safe_edit(event, f"**{name.upper()}**\n━━━━━━━━━━━━━━━\n{result}")
+            return cmd
+
+        transforms = {
+            "upper": str.upper,
+            "lower": str.lower,
+            "reverse": lambda s: s[::-1],
+            "len": lambda s: str(len(s)),
+            "wcount": lambda s: str(len(s.split())),
+            "bold": lambda s: f"**{s}**",
+            "italic": lambda s: f"__{s}__",
+            "mono": lambda s: f"`{s}`",
+            "camel": lambda s: ''.join(word.capitalize() if i>0 else word.lower() for i, word in enumerate(s.split())),
+            "titlecase": lambda s: s.title(),
+            "snake": lambda s: '_'.join(s.lower().split()),
+            "shout": lambda s: s.upper() + "!",
+            "mock": lambda s: ''.join(c.upper() if i%2 else c.lower() for i,c in enumerate(s)),
+            "spaceit": lambda s: ' '.join(s),
+            "removespaces": lambda s: ''.join(s.split()),
+            "clap": lambda s: ' 👏 '.join(s.split()),
+            "mirror": lambda s: s + s[::-1],
+            "flip_text": lambda s: s[::-1].translate(str.maketrans("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "ɐqɔpǝɟɓɥıɾʞlɯuodbɹsʇnʌʍxʎz∀BƆDƎℲ⅁HIſʞLMNOԀQɹS┴∩ΛMX⅄Z")),
+        }
+        for name, func in transforms.items():
+            format_text_func(name, func)
+
+        @register_cmd("big", premium=True)
+        async def cmd_big(event, arg):
+            await safe_edit(event, f"**BIG**\n━━━━━━━━━━━━━━━\n{arg.upper()}")
+
+        @register_cmd("small", premium=True)
+        async def cmd_small(event, arg):
+            await safe_edit(event, f"**SMALL**\n━━━━━━━━━━━━━━━\n{arg.lower()}")
+
+        @register_cmd("shadow", premium=True)
+        async def cmd_shadow(event, arg):
+            await safe_edit(event, f"**SHADOW**\n━━━━━━━━━━━━━━━\n***{arg}***")
+
+        @register_cmd("zalgo", premium=True)
+        async def cmd_zalgo(event, arg):
+            diacritics = r"̴̵̶̷̸̡̢̧̨̛̖̗̘̙̜̝̞̟̠̣̤̥̦̩̪̫̬̭̮̯̰̱̲̳̹̺̻̼͇͈͉͍͎̀́̂̃̄̅̆̇̈̉̊̋̌̍̎̏̐̑̒̓̔̽̾̿̀́͂̓̈́͆͊͋͌̕̚ͅ͏͓͔͕͖͙͚͐͑͒͗͛ͣͤͥͦͧͨͩͪͫͬͭͮͯ͘͜͟͢͝͞͠͡"
+            zalgo = ''.join(c + ''.join(random.choice(diacritics) for _ in range(random.randint(1, 3))) for c in arg)
+            await safe_edit(event, f"**ZALGO**\n━━━━━━━━━━━━━━━\n{zalgo}")
+
+        @register_cmd("leet", premium=True)
+        async def cmd_leet(event, arg):
+            leet_map = str.maketrans("aAbBeEiIoOsStT", "4@8£3!10$7+")
+            await safe_edit(event, f"**LEET**\n━━━━━━━━━━━━━━━\n{arg.translate(leet_map)}")
+
+        # ─── UTILITY COMMANDS ──────────────────────────────────────────────────
+        @register_cmd("hex", premium=True)
+        async def cmd_hex(event, arg):
+            hex_str = arg.encode('utf-8').hex()
+            await safe_edit(event, f"**HEX**\n━━━━━━━━━━━━━━━\n{hex_str}")
+
+        @register_cmd("octal", premium=True)
+        async def cmd_octal(event, arg):
+            oct_str = ' '.join(format(ord(c), 'o') for c in arg)
+            await safe_edit(event, f"**OCTAL**\n━━━━━━━━━━━━━━━\n{oct_str}")
+
+        @register_cmd("ascii", premium=True)
+        async def cmd_ascii(event, arg):
+            ascii_codes = ' '.join(str(ord(c)) for c in arg)
+            await safe_edit(event, f"**ASCII**\n━━━━━━━━━━━━━━━\n{ascii_codes}")
+
+        @register_cmd("nato", premium=True)
+        async def cmd_nato(event, arg):
+            nato = {'a':'Alpha','b':'Bravo','c':'Charlie','d':'Delta','e':'Echo','f':'Foxtrot','g':'Golf','h':'Hotel','i':'India','j':'Juliett','k':'Kilo','l':'Lima','m':'Mike','n':'November','o':'Oscar','p':'Papa','q':'Quebec','r':'Romeo','s':'Sierra','t':'Tango','u':'Uniform','v':'Victor','w':'Whiskey','x':'Xray','y':'Yankee','z':'Zulu'}
+            result = ' '.join(nato.get(c.lower(), c) for c in arg)
+            await safe_edit(event, f"**NATO**\n━━━━━━━━━━━━━━━\n{result}")
+
+        @register_cmd("palindrome", premium=True)
+        async def cmd_palindrome(event, arg):
+            cleaned = ''.join(c.lower() for c in arg if c.isalnum())
+            is_pal = cleaned == cleaned[::-1]
+            await safe_edit(event, f"**PALINDROME**\n━━━━━━━━━━━━━━━\n'{arg}' is {'a palindrome' if is_pal else 'not a palindrome'}.")
+
+        @register_cmd("vowels", premium=True)
+        async def cmd_vowels(event, arg):
+            count = sum(1 for c in arg.lower() if c in 'aeiou')
+            await safe_edit(event, f"**VOWELS**\n━━━━━━━━━━━━━━━\nVowel count: {count}")
+
+        @register_cmd("wordfreq", premium=True)
+        async def cmd_wordfreq(event, arg):
+            words = arg.split()
+            freq = {}
+            for w in words:
+                freq[w] = freq.get(w, 0) + 1
+            out = '\n'.join(f"{w}: {freq[w]}" for w in freq)
+            await safe_edit(event, f"**WORD FREQUENCY**\n━━━━━━━━━━━━━━━\n{out}")
+
+        @register_cmd("charcount", premium=True)
+        async def cmd_charcount(event, arg):
+            await safe_edit(event, f"**CHAR COUNT**\n━━━━━━━━━━━━━━━\n{len(arg)}")
+
+        @register_cmd("lettercount", premium=True)
+        async def cmd_lettercount(event, arg):
+            letters = sum(c.isalpha() for c in arg)
+            await safe_edit(event, f"**LETTER COUNT**\n━━━━━━━━━━━━━━━\n{letters}")
+
+        @register_cmd("charinfo", premium=True)
+        async def cmd_charinfo(event, arg):
+            if not arg:
+                return
+            c = arg[0]
+            info = f"Char: '{c}'\nUnicode: U+{ord(c):04X}\nIs digit: {c.isdigit()}\nIs alpha: {c.isalpha()}\nIs space: {c.isspace()}"
+            await safe_edit(event, f"**CHAR INFO**\n━━━━━━━━━━━━━━━\n{info}")
+
+        # ─── MATH COMMANDS ─────────────────────────────────────────────────────
+        @register_cmd("bmi", premium=True)
+        async def cmd_bmi(event, arg):
+            parts = arg.split()
+            if len(parts) != 2:
+                return
+            try:
+                weight = float(parts[0])
+                height = float(parts[1])
+                bmi = weight / (height ** 2)
+                await safe_edit(event, f"**BMI**\n━━━━━━━━━━━━━━━\nWeight: {weight} kg\nHeight: {height} m\nBMI: {bmi:.2f}")
+            except:
+                await safe_edit(event, "❌ Invalid input. Use .bmi <weight_kg> <height_m>")
+
+        @register_cmd("age", premium=True)
+        async def cmd_age(event, arg):
+            try:
+                birth = datetime.strptime(arg.strip(), "%Y-%m-%d")
+                today = datetime.now()
+                age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+                await safe_edit(event, f"**AGE**\n━━━━━━━━━━━━━━━\nAge: {age} years")
+            except:
+                await safe_edit(event, "❌ Invalid date. Use YYYY-MM-DD")
+
+        @register_cmd("prime", premium=True)
+        async def cmd_prime(event, arg):
+            try:
+                n = int(arg)
+                if n < 2:
+                    is_prime = False
+                else:
+                    is_prime = all(n % i != 0 for i in range(2, int(math.sqrt(n))+1))
+                await safe_edit(event, f"**PRIME**\n━━━━━━━━━━━━━━━\n{n} is {'prime' if is_prime else 'not prime'}.")
+            except:
+                await safe_edit(event, "❌ Invalid number.")
+
+        @register_cmd("factorial", premium=True)
+        async def cmd_factorial(event, arg):
+            try:
+                n = int(arg)
+                res = math.factorial(n)
+                await safe_edit(event, f"**FACTORIAL**\n━━━━━━━━━━━━━━━\n{n}! = {res}")
+            except:
+                await safe_edit(event, "❌ Invalid number.")
+
+        @register_cmd("fibonacci", premium=True)
+        async def cmd_fibonacci(event, arg):
+            try:
+                n = int(arg)
+                if n <= 0:
+                    return
+                fib = [0,1]
+                for i in range(2,n):
+                    fib.append(fib[i-1]+fib[i-2])
+                await safe_edit(event, f"**FIBONACCI**\n━━━━━━━━━━━━━━━\n{', '.join(map(str, fib[:n]))}")
+            except:
+                await safe_edit(event, "❌ Invalid number.")
+
+        @register_cmd("square", premium=True)
+        async def cmd_square(event, arg):
+            try:
+                n = int(arg)
+                await safe_edit(event, f"**SQUARE**\n━━━━━━━━━━━━━━━\n{n}^2 = {n*n}")
+            except:
+                await safe_edit(event, "❌ Invalid number.")
+
+        @register_cmd("roman", premium=True)
+        async def cmd_roman(event, arg):
+            try:
+                n = int(arg)
+                if n < 1 or n > 3999:
+                    await safe_edit(event, "Number must be between 1 and 3999")
+                    return
+                roman_map = [(1000,'M'),(900,'CM'),(500,'D'),(400,'CD'),(100,'C'),(90,'XC'),(50,'L'),(40,'XL'),(10,'X'),(9,'IX'),(5,'V'),(4,'IV'),(1,'I')]
+                res = ''
+                for val, sym in roman_map:
+                    while n >= val:
+                        res += sym
+                        n -= val
+                await safe_edit(event, f"**ROMAN**\n━━━━━━━━━━━━━━━\n{res}")
+            except:
+                await safe_edit(event, "❌ Invalid number.")
+
+        @register_cmd("table", premium=True)
+        async def cmd_table(event, arg):
+            try:
+                n = int(arg)
+                lines = [f"{n} x {i} = {n*i}" for i in range(1,11)]
+                await safe_edit(event, f"**TABLE**\n━━━━━━━━━━━━━━━\n" + '\n'.join(lines))
+            except:
+                await safe_edit(event, "❌ Invalid number.")
+
+        @register_cmd("percentage", premium=True)
+        async def cmd_percentage(event, arg):
+            parts = arg.split()
+            if len(parts) != 2:
+                return
+            try:
+                val = float(parts[0])
+                total = float(parts[1])
+                perc = (val/total)*100
+                await safe_edit(event, f"**PERCENTAGE**\n━━━━━━━━━━━━━━━\n{val}/{total} = {perc:.2f}%")
+            except:
+                await safe_edit(event, "❌ Invalid input. Use .percentage <part> <total>")
+
+        @register_cmd("number", premium=True)
+        async def cmd_number(event, arg):
+            try:
+                n = int(arg)
+                await safe_edit(event, f"**NUMBER INFO**\n━━━━━━━━━━━━━━━\n{n}\nEven: {n%2==0}\nPositive: {n>0}\nPrime: {'Yes' if all(n%i!=0 for i in range(2,int(math.sqrt(n))+1)) and n>1 else 'No'}\nDigits: {len(str(n))}")
+            except:
+                await safe_edit(event, "❌ Invalid number.")
+
+        @register_cmd("countdown", premium=True)
+        async def cmd_countdown(event, arg):
+            try:
+                sec = int(arg)
+                if sec <= 0:
+                    return
+                msg = await event.reply(f"⏳ {sec}s")
+                for i in range(sec, 0, -1):
+                    await asyncio.sleep(1)
+                    await msg.edit(f"⏳ {i}s")
+                await msg.edit("⏰ **Time's up!**")
+            except:
+                await safe_edit(event, "❌ Invalid seconds.")
+
+        # ─── ENCRYPTION ──────────────────────────────────────────────────────
+        @register_cmd("encrypt", premium=True)
+        async def cmd_encrypt(event, arg):
+            encrypted = ''.join(chr(ord(c)+3) if c.isprintable() else c for c in arg)
+            await safe_edit(event, f"**ENCRYPT**\n━━━━━━━━━━━━━━━\n{encrypted}")
+
+        @register_cmd("decrypt", premium=True)
+        async def cmd_decrypt(event, arg):
+            decrypted = ''.join(chr(ord(c)-3) if c.isprintable() else c for c in arg)
+            await safe_edit(event, f"**DECRYPT**\n━━━━━━━━━━━━━━━\n{decrypted}")
+
+        @register_cmd("sha1", premium=True)
+        async def cmd_sha1(event, arg):
+            h = hashlib.sha1(arg.encode()).hexdigest()
+            await safe_edit(event, f"**SHA1**\n━━━━━━━━━━━━━━━\n{h}")
+
+        @register_cmd("sha512", premium=True)
+        async def cmd_sha512(event, arg):
+            h = hashlib.sha512(arg.encode()).hexdigest()
+            await safe_edit(event, f"**SHA512**\n━━━━━━━━━━━━━━━\n{h}")
+
+        @register_cmd("typetest", premium=True)
+        async def cmd_typetest(event, arg):
+            await safe_edit(event, f"**TYPING TEST**\n━━━━━━━━━━━━━━━\nTyping speed: {random.randint(30,60)} WPM\nAccuracy: {random.randint(90,100)}%")
+
+        @register_cmd("coin", premium=True)
+        async def cmd_coin(event, _):
+            await safe_edit(event, f"**COIN FLIP**\n━━━━━━━━━━━━━━━\n{random.choice(['Heads', 'Tails'])}")
+
+        @register_cmd("lucky", premium=True)
+        async def cmd_lucky(event, _):
+            await safe_edit(event, f"**LUCKY NUMBER**\n━━━━━━━━━━━━━━━\n{random.randint(1,100)}")
+
+        @register_cmd("roll", premium=True)
+        async def cmd_roll(event, arg):
+            try:
+                max_val = int(arg) if arg else 6
+                if max_val < 1:
+                    max_val = 6
+                await safe_edit(event, f"**DICE ROLL**\n━━━━━━━━━━━━━━━\n{random.randint(1, max_val)}")
+            except:
+                await safe_edit(event, "❌ Invalid max.")
+
+        @register_cmd("timer", premium=True)
+        async def cmd_timer(event, arg):
+            try:
+                sec = int(arg)
+                if sec <= 0:
+                    return
+                msg = await event.reply(f"⏳ Timer set for {sec}s")
+                await asyncio.sleep(sec)
+                await msg.edit("⏰ **Timer is up!**")
+            except:
+                await safe_edit(event, "❌ Invalid seconds.")
+
+        @register_cmd("repeat", premium=True)
+        async def cmd_repeat(event, arg):
+            parts = arg.split(maxsplit=1)
+            if len(parts) != 2 or not parts[0].isdigit():
+                return
+            count = int(parts[0])
+            if count < 1 or count > 20:
+                return
+            text = parts[1]
+            result = (text + "\n") * count
+            await safe_edit(event, f"**REPEAT**\n━━━━━━━━━━━━━━━\n{result.strip()}")
+
+        # ─── TIC TAC TOE ──────────────────────────────────────────────────────
+        ttt_games = {}
+
+        @register_cmd("ttt")
+        async def cmd_ttt(event, _):
+            chat = event.chat_id
+            if chat in ttt_games:
+                return await safe_edit(event, "⚠️ A game is already in progress! Use `.ttt_move` to play.")
+            board = [" "] * 9
+            ttt_games[chat] = {"board": board, "turn": "X", "player_x": None, "player_o": None}
+            ttt_games[chat]["player_x"] = event.sender_id
+            board_display = "```\n" + "\n".join([" | ".join(board[i:i+3]) for i in range(0, 9, 3)]) + "\n```"
+            await safe_edit(event, f"🎮 **TIC TAC TOE**\n{board_display}\n\nPlayer X (you) starts. Use `.ttt_move 1-9`")
+
+        @register_cmd("ttt_move")
+        async def cmd_ttt_move(event, arg):
+            chat = event.chat_id
+            if chat not in ttt_games:
+                return await safe_edit(event, "❌ No game active. Start with `.ttt`")
+            game = ttt_games[chat]
+            sender = event.sender_id
+            if game["turn"] == "X":
+                if game["player_x"] is None:
+                    game["player_x"] = sender
+                if sender != game["player_x"]:
+                    return await safe_edit(event, "❌ It's not your turn (X).")
+            else:
+                if game["player_o"] is None:
+                    game["player_o"] = sender
+                if sender != game["player_o"]:
+                    return await safe_edit(event, "❌ It's not your turn (O).")
+            if not arg or not arg.isdigit() or int(arg) < 1 or int(arg) > 9:
+                return await safe_edit(event, "❌ Use 1-9 for position")
+            pos = int(arg) - 1
+            if game["board"][pos] != " ":
+                return await safe_edit(event, "❌ Position already taken!")
+            game["board"][pos] = game["turn"]
+            board = game["board"]
+            win = False
+            for i in range(3):
+                if board[i*3] == board[i*3+1] == board[i*3+2] != " ":
+                    win = True
+            for i in range(3):
+                if board[i] == board[i+3] == board[i+6] != " ":
+                    win = True
+            if board[0] == board[4] == board[8] != " " or board[2] == board[4] == board[6] != " ":
+                win = True
+            if win:
+                board_display = "```\n" + "\n".join([" | ".join(board[i:i+3]) for i in range(0, 9, 3)]) + "\n```"
+                await safe_edit(event, f"🎮 **TIC TAC TOE**\n{board_display}\n\n🏆 **{game['turn']} Wins!** 🎉")
+                del ttt_games[chat]
+                return
+            if " " not in board:
+                board_display = "```\n" + "\n".join([" | ".join(board[i:i+3]) for i in range(0, 9, 3)]) + "\n```"
+                await safe_edit(event, f"🎮 **TIC TAC TOE**\n{board_display}\n\n🤝 **Draw!**")
+                del ttt_games[chat]
+                return
+            game["turn"] = "O" if game["turn"] == "X" else "X"
+            board_display = "```\n" + "\n".join([" | ".join(board[i:i+3]) for i in range(0, 9, 3)]) + "\n```"
+            await safe_edit(event, f"🎮 **TIC TAC TOE**\n{board_display}\n\n{game['turn']}'s turn")
+
+        # ─── RPS ───────────────────────────────────────────────────────────────
+        @register_cmd("rps")
+        async def cmd_rps(event, arg):
+            choices = {"r": "🪨 Rock", "p": "📄 Paper", "s": "✂️ Scissors"}
+            wins = {"r": "s", "p": "r", "s": "p"}
+            if not arg or arg.lower() not in choices:
+                return await safe_edit(event, "❌ Use: `.rps r` (rock) / `.rps p` (paper) / `.rps s` (scissors)")
+            user = arg.lower()
+            bot = random.choice(list(choices.keys()))
+            if user == bot:
+                result = "🤝 Draw!"
+            elif wins[user] == bot:
+                result = "🏆 You Win!"
+            else:
+                result = "🤖 Bot Wins!"
+            await safe_edit(event, f"✂️🪨📄 **RPS**\n━━━━━━━━━━━━━━━\n👤 You: {choices[user]}\n🤖 Bot: {choices[bot]}\n\n{result}")
+
+        # ─── RIDDLE & QUIZ ──────────────────────────────────────────────────────
+        @register_cmd("riddle")
+        async def cmd_riddle(event, _):
+            if not riddle_texts:
+                await safe_edit(event, "❌ No riddles available.")
+                return
+            riddle = random.choice(riddle_texts)
+            await safe_edit(event, f"🧩 **RIDDLE**\n━━━━━━━━━━━━━━━\n{riddle['q']}\n\n⏳ You have 60 seconds to think!\n💡 Answer will be revealed after timer...")
+            await asyncio.sleep(60)
+            await safe_edit(event, f"🧩 **RIDDLE ANSWER**\n━━━━━━━━━━━━━━━\n{riddle['q']}\n\n✅ **Answer:** `{riddle['a']}`")
+
+        @register_cmd("quiz")
+        async def cmd_quiz(event, _):
+            if not quiz_texts:
+                await safe_edit(event, "❌ No quiz questions available.")
+                return
+            quiz = random.choice(quiz_texts)
+            await safe_edit(event, f"📚 **QUIZ**\n━━━━━━━━━━━━━━━\n{quiz['q']}\n\n⏳ You have 60 seconds to answer!\n💡 Answer will be revealed after timer...")
+            await asyncio.sleep(60)
+            await safe_edit(event, f"📚 **QUIZ ANSWER**\n━━━━━━━━━━━━━━━\n{quiz['q']}\n\n✅ **Answer:** `{quiz['a']}`")
+
+        # ─── ORIGINAL REPLY & RAID COMMANDS ──────────────────────────────────
+        @register_cmd("reply", needs_reply=True)
+        async def cmd_reply(event, arg):
+            targets = await get_targets(event, arg)
+            if not targets: return
+            added, already = [], []
+            for uid in targets:
+                if uid in user_bot.reply_users:
+                    already.append(str(uid))
+                else:
+                    user_bot.reply_users.add(uid); added.append(str(uid))
+            msg = ""
+            if added: msg += f"🔥 Reply raid on: {', '.join(added)}\n"
+            if already: msg += f"⚠️ Already active: {', '.join(already)}"
+            if not msg: msg = "❌ No changes"
+            await safe_edit(event, msg)
+
+        @register_cmd("sreply")
+        async def cmd_sreply(event, arg):
+            targets = await get_targets(event, arg)
+            if targets:
+                removed, not_active = [], []
+                for uid in targets:
+                    if uid in user_bot.reply_users:
+                        user_bot.reply_users.discard(uid); removed.append(str(uid))
+                    else:
+                        not_active.append(str(uid))
+                msg = ""
+                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
+                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
+                if not msg: msg = "❌ No changes"
+                await safe_edit(event, msg)
+            else:
+                user_bot.reply_users.clear()
+                await safe_edit(event, "🛑 Reply raid stopped for all")
+
+        @register_cmd("rr", needs_reply=True)
+        async def cmd_rr(event, arg):
+            targets = await get_targets(event, arg)
+            if not targets: return
+            added, already = [], []
+            for uid in targets:
+                if uid in user_bot.rr_users:
+                    already.append(str(uid))
+                else:
+                    user_bot.rr_users.add(uid); added.append(str(uid))
+            msg = ""
+            if added: msg += f"🔥 RR on: {', '.join(added)}\n"
+            if already: msg += f"⚠️ Already: {', '.join(already)}"
+            if not msg: msg = "❌ No changes"
+            await safe_edit(event, msg)
+
+        @register_cmd("srr")
+        async def cmd_srr(event, arg):
+            targets = await get_targets(event, arg)
+            if targets:
+                removed, not_active = [], []
+                for uid in targets:
+                    if uid in user_bot.rr_users:
+                        user_bot.rr_users.discard(uid); removed.append(str(uid))
+                    else:
+                        not_active.append(str(uid))
+                msg = ""
+                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
+                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
+                if not msg: msg = "❌ No changes"
+                await safe_edit(event, msg)
+            else:
+                user_bot.rr_users.clear()
+                await safe_edit(event, "🛑 RR stopped for all")
+
+        @register_cmd("flag", needs_reply=True)
+        async def cmd_flag(event, arg):
+            targets = await get_targets(event, arg)
+            if not targets: return
+            added, already = [], []
+            for uid in targets:
+                if uid in user_bot.flag_users:
+                    already.append(str(uid))
+                else:
+                    user_bot.flag_users.add(uid); added.append(str(uid))
+            msg = ""
+            if added: msg += f"🌊 Flag on: {', '.join(added)}\n"
+            if already: msg += f"⚠️ Already: {', '.join(already)}"
+            if not msg: msg = "❌ No changes"
+            await safe_edit(event, msg)
+
+        @register_cmd("sflag")
+        async def cmd_sflag(event, arg):
+            targets = await get_targets(event, arg)
+            if targets:
+                removed, not_active = [], []
+                for uid in targets:
+                    if uid in user_bot.flag_users:
+                        user_bot.flag_users.discard(uid); removed.append(str(uid))
+                    else:
+                        not_active.append(str(uid))
+                msg = ""
+                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
+                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
+                if not msg: msg = "❌ No changes"
+                await safe_edit(event, msg)
+            else:
+                user_bot.flag_users.clear()
+                await safe_edit(event, "🛑 Flag stopped for all")
+
+        @register_cmd("hrr", needs_reply=True)
+        async def cmd_hrr(event, arg):
+            targets = await get_targets(event, arg)
+            if not targets: return
+            added, already = [], []
+            for uid in targets:
+                if uid in user_bot.hrr_users:
+                    already.append(str(uid))
+                else:
+                    user_bot.hrr_users.add(uid); added.append(str(uid))
+            msg = ""
+            if added: msg += f"💜 Heart on: {', '.join(added)}\n"
+            if already: msg += f"⚠️ Already: {', '.join(already)}"
+            if not msg: msg = "❌ No changes"
+            await safe_edit(event, msg)
+
+        @register_cmd("shrr")
+        async def cmd_shrr(event, arg):
+            targets = await get_targets(event, arg)
+            if targets:
+                removed, not_active = [], []
+                for uid in targets:
+                    if uid in user_bot.hrr_users:
+                        user_bot.hrr_users.discard(uid); removed.append(str(uid))
+                    else:
+                        not_active.append(str(uid))
+                msg = ""
+                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
+                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
+                if not msg: msg = "❌ No changes"
+                await safe_edit(event, msg)
+            else:
+                user_bot.hrr_users.clear()
+                await safe_edit(event, "🛑 Heart stopped for all")
+
+        @register_cmd("replygod", needs_reply=True)
+        async def cmd_replygod(event, arg):
+            targets = await get_targets(event, arg)
+            if not targets: return
+            added, already = [], []
+            for uid in targets:
+                if uid in user_bot.replygod_users:
+                    already.append(str(uid))
+                else:
+                    user_bot.replygod_users.add(uid); added.append(str(uid))
+            msg = ""
+            if added: msg += f"💥 God on: {', '.join(added)}\n"
+            if already: msg += f"⚠️ Already: {', '.join(already)}"
+            if not msg: msg = "❌ No changes"
+            await safe_edit(event, msg)
+
+        @register_cmd("sgod")
+        async def cmd_sgod(event, arg):
+            targets = await get_targets(event, arg)
+            if targets:
+                removed, not_active = [], []
+                for uid in targets:
+                    if uid in user_bot.replygod_users:
+                        user_bot.replygod_users.discard(uid); removed.append(str(uid))
+                    else:
+                        not_active.append(str(uid))
+                msg = ""
+                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
+                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
+                if not msg: msg = "❌ No changes"
+                await safe_edit(event, msg)
+            else:
+                user_bot.replygod_users.clear()
+                await safe_edit(event, "🛑 God stopped for all")
+
+        @register_cmd("customraid", needs_reply=True)
+        async def cmd_customraid(event, arg):
+            if not arg or len(arg.split()) < 2:
+                return
+            text, count = arg.rsplit(" ", 1)
+            try:
+                count = int(count)
+                if count < 1: count = 1
+                if count > 100: count = 100
+            except:
+                return
+            targets = await get_targets(event, "")
+            if not targets: return
+            added, overridden = [], []
+            for uid in targets:
+                if uid in user_bot.custom_raid_users:
+                    overridden.append(str(uid))
+                user_bot.custom_raid_users[uid] = {"text": text, "count": count}
+                added.append(str(uid))
+            msg = f"☄️ **Custom Raid started** on: {', '.join(added)} × {count} times"
+            if overridden:
+                msg += f"\n⚠️ Overridden: {', '.join(overridden)}"
+            await safe_edit(event, msg)
+
+        @register_cmd("stopcustomraid")
+        async def cmd_stopcustomraid(event, arg):
+            targets = await get_targets(event, arg)
+            if targets:
+                removed, not_active = [], []
+                for uid in targets:
+                    if uid in user_bot.custom_raid_users:
+                        del user_bot.custom_raid_users[uid]
+                        removed.append(str(uid))
+                    else:
+                        not_active.append(str(uid))
+                msg = ""
+                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
+                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
+                if not msg: msg = "❌ No changes"
+                await safe_edit(event, msg)
+            else:
+                user_bot.custom_raid_users.clear()
+                await safe_edit(event, "🛑 All Custom Raids stopped")
+
+        # ─── PWR RAID (SEQUENTIAL) ──────────────────────────────────────────
+        @register_cmd("pwr", needs_reply=True)
+        async def cmd_pwr(event, arg):
+            targets = await get_targets(event, arg)
+            if not targets:
+                return
+            count = None
+            if arg:
+                parts = arg.strip().split()
+                if parts and parts[-1].isdigit():
+                    count = int(parts[-1])
+                    if count < 1: count = 1
+                    if count > 100: count = 100
+            if not pwr_texts:
+                await safe_edit(event, "⚠️ PWR list is empty. Add texts to `pwr_texts` in code.")
+                return
+            added = []
+            for uid in targets:
+                user_bot.pwr_raid[uid] = count
+                user_bot.pwr_users.add(uid)
+                user_bot.pwr_index[uid] = 0
+                display = "∞" if count is None else f"{count} times"
+                added.append(f"{uid} ({display})")
+            await safe_edit(event, f"🔥 PWR raid (sequential) started for {', '.join(added)}")
+
+        @register_cmd("spwr")
+        async def cmd_spwr(event, arg):
+            targets = await get_targets(event, arg)
+            if not targets:
+                user_bot.pwr_raid.clear()
+                user_bot.pwr_users.clear()
+                user_bot.pwr_index.clear()
+                return await safe_edit(event, "🛑 PWR raid stopped for all")
+            removed = []
+            for uid in targets:
+                if uid in user_bot.pwr_raid:
+                    del user_bot.pwr_raid[uid]
+                    user_bot.pwr_users.discard(uid)
+                    user_bot.pwr_index.pop(uid, None)
+                    removed.append(str(uid))
+            if removed:
+                await safe_edit(event, f"🛑 Removed: {', '.join(removed)}")
+            else:
+                await safe_edit(event, "⚠️ No active raid for these users")
+
+        # ─── OWS SPAM ────────────────────────────────────────────────────────
+        @register_cmd("ows")
+        async def cmd_ows(event, arg):
+            if not ows_texts:
+                await safe_edit(event, "⚠️ OWS list is empty. Add texts to `ows_texts` in code.")
+                return
+            chat = event.chat_id
+            count = None
+            if arg and arg.strip().isdigit():
+                count = int(arg.strip())
+                if count < 1: count = 1
+                if count > 1000: count = 1000
+            reply_to = None
+            target_user = None
+            if event.is_reply:
+                reply = await event.get_reply_message()
+                if reply:
+                    reply_to = reply.id
+                    target_user = reply.sender_id
+                    if target_user and await is_protected(target_user, "ows"):
+                        await safe_edit(event, "🚫 This user is protected from OWS.")
+                        return
+            if chat in user_bot.spray_tasks and not user_bot.spray_tasks[chat].done():
+                return
+            await safe_edit(event, f"💬 OWS (sequential) started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}...")
+            async def loop():
+                sent = 0
+                idx = 0
+                try:
+                    while chat in user_bot.spray_tasks:
+                        if count is not None and sent >= count:
+                            break
+                        if target_user and sent % 10 == 0 and await is_protected(target_user, "ows"):
+                            await safe_send(chat, "🛑 Target is now protected. Stopping OWS.")
+                            break
+                        txt = ows_texts[idx % len(ows_texts)]
+                        idx += 1
+                        sent += 1
+                        await safe_send(chat, txt, reply_to=reply_to)
+                        if sent % 30 == 0:
+                            await asyncio.sleep(3)
+                        await asyncio.sleep(user_bot.SPRAY_DELAY)
+                except asyncio.CancelledError:
+                    pass
+                finally:
+                    user_bot.spray_tasks.pop(chat, None)
+                    if sent > 0:
+                        await safe_send(chat, f"💬 OWS done: {sent} messages sent.")
+            user_bot.spray_tasks[chat] = asyncio.create_task(loop())
+            await safe_edit(event, f"💬 OWS started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}")
+
+        @register_cmd("sows")
+        async def cmd_sows(event, _):
+            chat = event.chat_id
+            if chat in user_bot.spray_tasks:
+                try:
+                    user_bot.spray_tasks[chat].cancel()
+                except:
+                    pass
+                user_bot.spray_tasks.pop(chat, None)
+                await safe_edit(event, "🛑 OWS stopped.")
+            else:
+                await safe_edit(event, "⚠️ No active OWS spray in this chat.")
+
+        # ─── STOP ALL SPRAY ──────────────────────────────────────────────────
+        @register_cmd("stopallspray")
+        async def cmd_stopallspray(event, _):
+            if not is_admin(event.sender_id):
+                return
+            count = 0
+            for chat in list(user_bot.spray_tasks.keys()):
+                try:
+                    user_bot.spray_tasks[chat].cancel()
+                    count += 1
+                except:
+                    pass
+            user_bot.spray_tasks.clear()
+            user_bot.pwr_raid.clear()
+            user_bot.pwr_users.clear()
+            user_bot.pwr_index.clear()
+            user_bot.ows_spam.clear()
+            user_bot.ows_users.clear()
+            user_bot.ows_index.clear()
+            await safe_edit(event, f"🛑 Stopped all sprays/raids in {count} chats.")
+
+        # ─── ECHO ──────────────────────────────────────────────────────────────
+        @register_cmd("echo")
+        async def cmd_echo(event, arg):
+            if not arg:
+                return await safe_edit(event, "❌ Usage: `.echo <text>` or `.echo <count> <text>`")
+            parts = arg.strip().split(maxsplit=1)
+            if len(parts) >= 2 and parts[0].isdigit():
+                count = int(parts[0])
+                if count < 1: count = 1
+                if count > 20: count = 20
+                text = parts[1]
+                await event.delete()
+                for i in range(count):
+                    await user_bot.send_message(event.chat_id, text)
+                    await asyncio.sleep(0.5)
+            else:
+                await event.delete()
+                await user_bot.send_message(event.chat_id, arg)
 
         # ─── SPRAY ──────────────────────────────────────────────────────────────
         @register_cmd("spray")
@@ -14521,378 +14881,6 @@ async def run_user_bot(session_string, chat_id):
             except:
                 await safe_edit(event, "❌ Invalid number")
 
-        # ─── REPLY RAID ──────────────────────────────────────────────
-        @register_cmd("reply", needs_reply=True)
-        async def cmd_reply(event, arg):
-            targets = await get_targets(event, arg)
-            if not targets: return
-            added, already = [], []
-            for uid in targets:
-                if uid in user_bot.reply_users:
-                    already.append(str(uid))
-                else:
-                    user_bot.reply_users.add(uid); added.append(str(uid))
-            msg = ""
-            if added: msg += f"🔥 Reply raid on: {', '.join(added)}\n"
-            if already: msg += f"⚠️ Already active: {', '.join(already)}"
-            if not msg: msg = "❌ No changes"
-            await safe_edit(event, msg)
-
-        @register_cmd("sreply")
-        async def cmd_sreply(event, arg):
-            targets = await get_targets(event, arg)
-            if targets:
-                removed, not_active = [], []
-                for uid in targets:
-                    if uid in user_bot.reply_users:
-                        user_bot.reply_users.discard(uid); removed.append(str(uid))
-                    else:
-                        not_active.append(str(uid))
-                msg = ""
-                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
-                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
-                if not msg: msg = "❌ No changes"
-                await safe_edit(event, msg)
-            else:
-                user_bot.reply_users.clear()
-                await safe_edit(event, "🛑 Reply raid stopped for all")
-
-        @register_cmd("rr", needs_reply=True)
-        async def cmd_rr(event, arg):
-            targets = await get_targets(event, arg)
-            if not targets: return
-            added, already = [], []
-            for uid in targets:
-                if uid in user_bot.rr_users:
-                    already.append(str(uid))
-                else:
-                    user_bot.rr_users.add(uid); added.append(str(uid))
-            msg = ""
-            if added: msg += f"🔥 RR on: {', '.join(added)}\n"
-            if already: msg += f"⚠️ Already: {', '.join(already)}"
-            if not msg: msg = "❌ No changes"
-            await safe_edit(event, msg)
-
-        @register_cmd("srr")
-        async def cmd_srr(event, arg):
-            targets = await get_targets(event, arg)
-            if targets:
-                removed, not_active = [], []
-                for uid in targets:
-                    if uid in user_bot.rr_users:
-                        user_bot.rr_users.discard(uid); removed.append(str(uid))
-                    else:
-                        not_active.append(str(uid))
-                msg = ""
-                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
-                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
-                if not msg: msg = "❌ No changes"
-                await safe_edit(event, msg)
-            else:
-                user_bot.rr_users.clear()
-                await safe_edit(event, "🛑 RR stopped for all")
-
-        @register_cmd("flag", needs_reply=True)
-        async def cmd_flag(event, arg):
-            targets = await get_targets(event, arg)
-            if not targets: return
-            added, already = [], []
-            for uid in targets:
-                if uid in user_bot.flag_users:
-                    already.append(str(uid))
-                else:
-                    user_bot.flag_users.add(uid); added.append(str(uid))
-            msg = ""
-            if added: msg += f"🌊 Flag on: {', '.join(added)}\n"
-            if already: msg += f"⚠️ Already: {', '.join(already)}"
-            if not msg: msg = "❌ No changes"
-            await safe_edit(event, msg)
-
-        @register_cmd("sflag")
-        async def cmd_sflag(event, arg):
-            targets = await get_targets(event, arg)
-            if targets:
-                removed, not_active = [], []
-                for uid in targets:
-                    if uid in user_bot.flag_users:
-                        user_bot.flag_users.discard(uid); removed.append(str(uid))
-                    else:
-                        not_active.append(str(uid))
-                msg = ""
-                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
-                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
-                if not msg: msg = "❌ No changes"
-                await safe_edit(event, msg)
-            else:
-                user_bot.flag_users.clear()
-                await safe_edit(event, "🛑 Flag stopped for all")
-
-        @register_cmd("hrr", needs_reply=True)
-        async def cmd_hrr(event, arg):
-            targets = await get_targets(event, arg)
-            if not targets: return
-            added, already = [], []
-            for uid in targets:
-                if uid in user_bot.hrr_users:
-                    already.append(str(uid))
-                else:
-                    user_bot.hrr_users.add(uid); added.append(str(uid))
-            msg = ""
-            if added: msg += f"💜 Heart on: {', '.join(added)}\n"
-            if already: msg += f"⚠️ Already: {', '.join(already)}"
-            if not msg: msg = "❌ No changes"
-            await safe_edit(event, msg)
-
-        @register_cmd("shrr")
-        async def cmd_shrr(event, arg):
-            targets = await get_targets(event, arg)
-            if targets:
-                removed, not_active = [], []
-                for uid in targets:
-                    if uid in user_bot.hrr_users:
-                        user_bot.hrr_users.discard(uid); removed.append(str(uid))
-                    else:
-                        not_active.append(str(uid))
-                msg = ""
-                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
-                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
-                if not msg: msg = "❌ No changes"
-                await safe_edit(event, msg)
-            else:
-                user_bot.hrr_users.clear()
-                await safe_edit(event, "🛑 Heart stopped for all")
-
-        @register_cmd("replygod", needs_reply=True)
-        async def cmd_replygod(event, arg):
-            targets = await get_targets(event, arg)
-            if not targets: return
-            added, already = [], []
-            for uid in targets:
-                if uid in user_bot.replygod_users:
-                    already.append(str(uid))
-                else:
-                    user_bot.replygod_users.add(uid); added.append(str(uid))
-            msg = ""
-            if added: msg += f"💥 God on: {', '.join(added)}\n"
-            if already: msg += f"⚠️ Already: {', '.join(already)}"
-            if not msg: msg = "❌ No changes"
-            await safe_edit(event, msg)
-
-        @register_cmd("sgod")
-        async def cmd_sgod(event, arg):
-            targets = await get_targets(event, arg)
-            if targets:
-                removed, not_active = [], []
-                for uid in targets:
-                    if uid in user_bot.replygod_users:
-                        user_bot.replygod_users.discard(uid); removed.append(str(uid))
-                    else:
-                        not_active.append(str(uid))
-                msg = ""
-                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
-                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
-                if not msg: msg = "❌ No changes"
-                await safe_edit(event, msg)
-            else:
-                user_bot.replygod_users.clear()
-                await safe_edit(event, "🛑 God stopped for all")
-
-        @register_cmd("customraid", needs_reply=True)
-        async def cmd_customraid(event, arg):
-            if not arg or len(arg.split()) < 2:
-                return
-            text, count = arg.rsplit(" ", 1)
-            try:
-                count = int(count)
-                if count < 1: count = 1
-                if count > 100: count = 100
-            except:
-                return
-            targets = await get_targets(event, "")
-            if not targets: return
-            added, overridden = [], []
-            for uid in targets:
-                if uid in user_bot.custom_raid_users:
-                    overridden.append(str(uid))
-                user_bot.custom_raid_users[uid] = {"text": text, "count": count}
-                added.append(str(uid))
-            msg = f"☄️ **Custom Raid started** on: {', '.join(added)} × {count} times"
-            if overridden:
-                msg += f"\n⚠️ Overridden: {', '.join(overridden)}"
-            await safe_edit(event, msg)
-
-        @register_cmd("stopcustomraid")
-        async def cmd_stopcustomraid(event, arg):
-            targets = await get_targets(event, arg)
-            if targets:
-                removed, not_active = [], []
-                for uid in targets:
-                    if uid in user_bot.custom_raid_users:
-                        del user_bot.custom_raid_users[uid]
-                        removed.append(str(uid))
-                    else:
-                        not_active.append(str(uid))
-                msg = ""
-                if removed: msg += f"🛑 Removed: {', '.join(removed)}\n"
-                if not_active: msg += f"⚠️ Not active: {', '.join(not_active)}"
-                if not msg: msg = "❌ No changes"
-                await safe_edit(event, msg)
-            else:
-                user_bot.custom_raid_users.clear()
-                await safe_edit(event, "🛑 All Custom Raids stopped")
-
-        # ─── PWR RAID (SEQUENTIAL) ──────────────────────────────────────────
-        pwr_texts = ["PWR1", "PWR2", "PWR3", "PWR4", "PWR5"]
-        @register_cmd("pwr", needs_reply=True)
-        async def cmd_pwr(event, arg):
-            targets = await get_targets(event, arg)
-            if not targets:
-                return
-            count = None
-            if arg:
-                parts = arg.strip().split()
-                if parts and parts[-1].isdigit():
-                    count = int(parts[-1])
-                    if count < 1: count = 1
-                    if count > 100: count = 100
-            if not pwr_texts:
-                await safe_edit(event, "⚠️ PWR list is empty. Add texts to `pwr_texts` in code.")
-                return
-            added = []
-            for uid in targets:
-                user_bot.pwr_raid[uid] = count
-                user_bot.pwr_users.add(uid)
-                user_bot.pwr_index[uid] = 0
-                display = "∞" if count is None else f"{count} times"
-                added.append(f"{uid} ({display})")
-            await safe_edit(event, f"🔥 PWR raid (sequential) started for {', '.join(added)}")
-
-        @register_cmd("spwr")
-        async def cmd_spwr(event, arg):
-            targets = await get_targets(event, arg)
-            if not targets:
-                user_bot.pwr_raid.clear()
-                user_bot.pwr_users.clear()
-                user_bot.pwr_index.clear()
-                return await safe_edit(event, "🛑 PWR raid stopped for all")
-            removed = []
-            for uid in targets:
-                if uid in user_bot.pwr_raid:
-                    del user_bot.pwr_raid[uid]
-                    user_bot.pwr_users.discard(uid)
-                    user_bot.pwr_index.pop(uid, None)
-                    removed.append(str(uid))
-            if removed:
-                await safe_edit(event, f"🛑 Removed: {', '.join(removed)}")
-            else:
-                await safe_edit(event, "⚠️ No active raid for these users")
-
-        # ─── OWS SPAM ────────────────────────────────────────────────────────
-        ows_texts = ["OWS1", "OWS2", "OWS3", "OWS4", "OWS5"]
-        @register_cmd("ows")
-        async def cmd_ows(event, arg):
-            if not ows_texts:
-                await safe_edit(event, "⚠️ OWS list is empty. Add texts to `ows_texts` in code.")
-                return
-            chat = event.chat_id
-            count = None
-            if arg and arg.strip().isdigit():
-                count = int(arg.strip())
-                if count < 1: count = 1
-                if count > 1000: count = 1000
-            reply_to = None
-            target_user = None
-            if event.is_reply:
-                reply = await event.get_reply_message()
-                if reply:
-                    reply_to = reply.id
-                    target_user = reply.sender_id
-                    if target_user and await is_protected(target_user, "ows"):
-                        await safe_edit(event, "🚫 This user is protected from OWS.")
-                        return
-            if chat in user_bot.spray_tasks and not user_bot.spray_tasks[chat].done():
-                return
-            await safe_edit(event, f"💬 OWS (sequential) started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}...")
-            async def loop():
-                sent = 0
-                idx = 0
-                try:
-                    while chat in user_bot.spray_tasks:
-                        if count is not None and sent >= count:
-                            break
-                        if target_user and sent % 10 == 0 and await is_protected(target_user, "ows"):
-                            await safe_send(chat, "🛑 Target is now protected. Stopping OWS.")
-                            break
-                        txt = ows_texts[idx % len(ows_texts)]
-                        idx += 1
-                        sent += 1
-                        await safe_send(chat, txt, reply_to=reply_to)
-                        if sent % 30 == 0:
-                            await asyncio.sleep(3)
-                        await asyncio.sleep(user_bot.SPRAY_DELAY)
-                except asyncio.CancelledError:
-                    pass
-                finally:
-                    user_bot.spray_tasks.pop(chat, None)
-                    if sent > 0:
-                        await safe_send(chat, f"💬 OWS done: {sent} messages sent.")
-            user_bot.spray_tasks[chat] = asyncio.create_task(loop())
-            await safe_edit(event, f"💬 OWS started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}")
-
-        @register_cmd("sows")
-        async def cmd_sows(event, _):
-            chat = event.chat_id
-            if chat in user_bot.spray_tasks:
-                try:
-                    user_bot.spray_tasks[chat].cancel()
-                except:
-                    pass
-                user_bot.spray_tasks.pop(chat, None)
-                await safe_edit(event, "🛑 OWS stopped.")
-            else:
-                await safe_edit(event, "⚠️ No active OWS spray in this chat.")
-
-        # ─── STOP ALL SPRAY ──────────────────────────────────────────────────
-        @register_cmd("stopallspray")
-        async def cmd_stopallspray(event, _):
-            if not is_admin(event.sender_id):
-                return
-            count = 0
-            for chat in list(user_bot.spray_tasks.keys()):
-                try:
-                    user_bot.spray_tasks[chat].cancel()
-                    count += 1
-                except:
-                    pass
-            user_bot.spray_tasks.clear()
-            user_bot.pwr_raid.clear()
-            user_bot.pwr_users.clear()
-            user_bot.pwr_index.clear()
-            user_bot.ows_spam.clear()
-            user_bot.ows_users.clear()
-            user_bot.ows_index.clear()
-            await safe_edit(event, f"🛑 Stopped all sprays/raids in {count} chats.")
-
-        # ─── ECHO ──────────────────────────────────────────────────────────────
-        @register_cmd("echo")
-        async def cmd_echo(event, arg):
-            if not arg:
-                return await safe_edit(event, "❌ Usage: `.echo <text>` or `.echo <count> <text>`")
-            parts = arg.strip().split(maxsplit=1)
-            if len(parts) >= 2 and parts[0].isdigit():
-                count = int(parts[0])
-                if count < 1: count = 1
-                if count > 20: count = 20
-                text = parts[1]
-                await event.delete()
-                for i in range(count):
-                    await user_bot.send_message(event.chat_id, text)
-                    await asyncio.sleep(0.5)
-            else:
-                await event.delete()
-                await user_bot.send_message(event.chat_id, arg)
-
-        # ─── MUTE / GMUTE / LOCK / UNLOCK / PURGE / THROW / ADDBOTS / AUTOTAG ──
         @register_cmd("mute", needs_reply=True)
         async def cmd_mute(event, arg):
             targets = await get_targets(event, arg)
@@ -15171,7 +15159,6 @@ async def run_user_bot(session_string, chat_id):
                 user_bot.autotag_task = None
             await safe_edit(event, "🛑 Auto-tag stopped.")
 
-        # ─── ANTI-DELETE ──────────────────────────────────────────────────────
         @register_cmd("antidel")
         async def cmd_antidel(event, arg):
             arg = arg.lower() if arg else ""
@@ -15187,7 +15174,6 @@ async def run_user_bot(session_string, chat_id):
                 status = "🟢 ON" if user_bot.antidel_enabled else "🔴 OFF"
                 await safe_edit(event, f"🛡️ Anti-Delete Status: {status}\nCached: {len(user_bot.antidel_cache)}")
 
-        # ─── WATCHSPAM ────────────────────────────────────────────────────────
         @register_cmd("watchspam")
         async def cmd_watchspam(event, arg):
             parts = arg.split() if arg else []
@@ -15254,7 +15240,6 @@ async def run_user_bot(session_string, chat_id):
                 msg += f"• {v.get('name', uid)} → limit {v['limit']} / {v['seconds']}s\n"
             await safe_edit(event, msg)
 
-        # ─── AUTO REACT ────────────────────────────────────────────────────────
         @register_cmd("ar")
         async def cmd_ar(event, arg):
             if not arg:
@@ -15335,7 +15320,6 @@ async def run_user_bot(session_string, chat_id):
                     msg += f"• {uid} → {emoji}\n"
             await safe_edit(event, msg)
 
-        # ─── NOTES ──────────────────────────────────────────────────────────────
         @register_cmd("notesadd")
         async def notes_add(event, arg):
             if not arg:
@@ -15365,7 +15349,6 @@ async def run_user_bot(session_string, chat_id):
             save_notes()
             await safe_edit(event, f"🗑️ Note {nid} deleted")
 
-        # ─── TTS ────────────────────────────────────────────────────────────────
         @register_cmd("tts")
         async def cmd_tts(event, arg):
             if not arg:
@@ -15396,7 +15379,6 @@ async def run_user_bot(session_string, chat_id):
                 try: os.remove(fname)
                 except: pass
 
-        # ─── QRCODE ────────────────────────────────────────────────────────────
         @register_cmd("qrcode")
         async def cmd_qrcode(event, arg):
             if not arg:
@@ -15414,7 +15396,6 @@ async def run_user_bot(session_string, chat_id):
                 try: os.remove(fname)
                 except: pass
 
-        # ─── FANCY / STYLE / EMOJI / CALC ──────────────────────────────────────
         @register_cmd("fancy")
         async def cmd_fancy(event, arg):
             if not arg:
@@ -15461,7 +15442,6 @@ async def run_user_bot(session_string, chat_id):
             except:
                 await safe_edit(event, "❌ Invalid expression")
 
-        # ─── WEATHER / IP / SHORT / INFO ──────────────────────────────────────
         @register_cmd("weather")
         async def cmd_weather(event, arg):
             if not arg:
@@ -15545,7 +15525,6 @@ async def run_user_bot(session_string, chat_id):
             except Exception as e:
                 await safe_edit(event, f"❌ Info error: {e}")
 
-        # ─── MUSIC / DMUSIC ──────────────────────────────────────────────────────
         @register_cmd("music")
         async def cmd_music(event, arg):
             if not arg:
@@ -15683,207 +15662,9 @@ async def run_user_bot(session_string, chat_id):
                     await safe_edit(event, f"❌ DMusic error: {e}")
             asyncio.create_task(download_music())
 
-        # ─── FUN METERS (Menu7) ──────────────────────────────────────────────
-
-        # Helper function for funny lines (10 lines per meter, alternating Hindi/English/Hinglish)
+        # ─── FUN METERS ──────────────────────────────────────────────────────────
         def get_funny_line(meter_type, percent):
-            lines = {
-                'stud': [
-                    "तू तो ग्रुप का अल्फा है! 🐺 (Alpha of the group!)",
-                    "Absolute chad energy! You're the alpha! 💪",
-                    "बहुत स्टड है तू – सबको NPC bana de! 😎",
-                    "तेरी स्टडनेस ने छत पार कर दी! 📈",
-                    "You're basically a walking sigma, bro! 🌟",
-                    "Tera stud level off the charts hai! 💯",
-                    "तू ही हीरो है इस कहानी का! 🦸",
-                    "You make other guys look like sidekicks! 😤",
-                    "Pure chad vibes – koi match nahi kar sakta! 💥",
-                    "तेरे आगे सब फीके हैं! 👑"
-                ],
-                'looks': [
-                    "तू तो मॉडल बन सकता/सकती है! 📸",
-                    "Even the sun is jealous of your glow! ☀️",
-                    "Tera chehra dekh ke mirror bhi sharma jaye! 🪞",
-                    "लग रहा है स्नैक – खाने का मन करता है! 🍕",
-                    "You've got that Greek god/goddess face! 🏛️",
-                    "Itna gorgeous ki Instagram crash ho jaye! 📱",
-                    "तेरी खूबसूरती का कोई मुकाबला नहीं! ✨",
-                    "Looking like a million bucks! 💰",
-                    "Tere glow se suraj bhi jal gaya! ☀️",
-                    "तू तो चेहरा है, बाकी सब पृष्ठभूमि! 🖼️"
-                ],
-                'gay': [
-                    "इंद्रधनुष तेरे लिए लहरा रहा! 🌈",
-                    "You're the life of the Pride parade! 🎉",
-                    "Itna gay ki unicorn ko bhi insecurity ho jaye! 🦄",
-                    "तू गेयों की रानी है! 👑",
-                    "Fabulous level: legendary! 💅",
-                    "Teri gayness ne rainbow ko bhi piche chhod diya! 🌈",
-                    "तू तो गे प्राइड का मुख्य आकर्षण है! 🏳️‍🌈",
-                    "You're so gay you make glitter jealous! ✨",
-                    "Itna gay ki straight log bhi confused ho jayein! 🤔",
-                    "तू ही इंद्रधनुष का दूसरा नाम है! 🌈"
-                ],
-                'lesbian': [
-                    "तू wlw दुनिया की रानी है! 👑",
-                    "You make sapphic hearts flutter! 💕",
-                    "Itni lesbian ki rainbow bhi sharm jaye! 🌈",
-                    "तू प्राइड का कारण है! 🏳️‍🌈",
-                    "You're the ultimate goddess of love! 💖",
-                    "Teri lesbian vibe ne sabko impress kar diya! 😍",
-                    "तू तो लेस्बियन क्वीन है! 👑",
-                    "You're so lesbian you make the moon blush! 🌙",
-                    "Itni sapphic ki Dilwale Dulhania bhi fade ho jaye! 🎬",
-                    "तू ही सबकी सपनों की रानी है! 💭"
-                ],
-                'straight': [
-                    "तू तो रूलर की तरह सीधा/सीधी है! 📏",
-                    "You're the definition of vanilla! 🍦",
-                    "Itna straight ki line bhi curve ho jaye! 😂",
-                    "तू हेट्रोनॉर्मेटिविटी का पोस्टर चाइल्ड है! 📸",
-                    "You're as straight as your hair after a blowout! 💇",
-                    "Tera straightness sabko surprise kar deta hai! 😮",
-                    "तू तो सीधा रास्ता है, मोड़ नहीं! 🛤️",
-                    "You're the most straight person ever! 🏳️",
-                    "Itna straight ki compass bhi confuse ho jaye! 🧭",
-                    "तू ही सीधेपन की मिसाल है! 🏆"
-                ],
-                'bi': [
-                    "तू दोनों दुनिया का सबसे अच्छा है! 🌈",
-                    "You're like a bicycle – you go both ways! 🚲",
-                    "Teri bi-ness ne sabko confuse kar diya! 😵",
-                    "तू बाई-कॉनिक की परिभाषा है! 💖💜💙",
-                    "You're so bi you make the colors jealous! 🎨",
-                    "Itna bi ki rainbow bhi piche reh gaya! 🌈",
-                    "तू बाई सोसाइटी की रानी है! 👑",
-                    "You're the best of both worlds, literally! 🌍",
-                    "Tera bi span sabko cover kar leta hai! 🤗",
-                    "तू ही दोनों तरफ की चाबी है! 🔑"
-                ],
-                'trans': [
-                    "तू एक खूबसूरत तितली है! 🦋",
-                    "You're the reason gender is a construct! 🏳️‍⚧️",
-                    "Itni trans ki flag ko bhi garv ho! 🏳️‍⚧️",
-                    "तू खुद होने का अवतार है! 💫",
-                    "You're a true trailblazer! 🚀",
-                    "Teri trans journey ne sabko inspire kar diya! ✨",
-                    "तू तो बदलाव की मिसाल है! 🌟",
-                    "You're so trans you make the stars align! 🌌",
-                    "Itna trans ki duniya badal do! 🌍",
-                    "तू ही सच्ची पहचान है! 💖"
-                ],
-                'simp': [
-                    "तू दीवार पर भी सिंप करेगा/करेगी! 🧱",
-                    "You'd send money to your own shadow! 💸",
-                    "Itna simp ki crush ka bathwater bhi kharid lo! 🛁",
-                    "तू सिंपों का राजा/रानी है! 👑",
-                    "You're the reason 'simp' is in the dictionary! 📖",
-                    "Teri simping ne sabko hila kar rakha! 😂",
-                    "तू तो सिम्पनेस का पर्याय है! 🏆",
-                    "You'd simp for a rock if it smiled! 🪨",
-                    "Itna simp ki girlfriend bhi bolde 'chill'! 😅",
-                    "तू ही सिम्पों का गुरु है! 🙏"
-                ],
-                'chad': [
-                    "तू अल्टीमेट चाड है! 🗿",
-                    "You make other men insecure! 😤",
-                    "Teri chadness ne sabko pichhe chhod diya! 🏃",
-                    "तू इस दुनिया का प्रोटागोनिस्ट है! 🌍",
-                    "You flex with just your pinky! 💪",
-                    "Itna chad ki sigma bhi respect kare! 🐺",
-                    "तू ही चाडों का चाड है! 👑",
-                    "You're the main character, everyone else is an extra! 🎬",
-                    "Teri vibe se duniya hil jati hai! 🌪️",
-                    "तू तो अल्फा का भी अल्फा है! 🐺"
-                ],
-                'friendly': [
-                    "तू सबकी ज़िंदगी की धूप है! ☀️",
-                    "You make friends everywhere you go! 🤝",
-                    "Itna friendly ki dushman bhi dost ban jaye! 😊",
-                    "तू गोल्डन रिट्रीवर का इंसानी रूप है! 🐕",
-                    "You're the reason people believe in kindness! 💖",
-                    "Teri friendliness ne sabko impress kar diya! 🥰",
-                    "तू तो मिलनसार का अवतार है! 🌟",
-                    "You're so friendly even the sun is jealous! ☀️",
-                    "Itna friendly ki log tujhse hi motivate ho! 💪",
-                    "तू ही सबकी पसंद है! 💕"
-                ],
-                'rizz': [
-                    "तेरी रिज़ ने सबका दिल चुरा लिया! 😏",
-                    "You have the rizz of a thousand pickup lines! 📞",
-                    "Tera rizz itna smooth ki makkhan bhi sharm jaye! 🧈",
-                    "तू रिज़ मास्टर है – कोई नहीं रुक सकता! 🧲",
-                    "You're the rizz of the century! 🌟",
-                    "Itni rizz ki log tujhse hi pyaar kar bethe! 😍",
-                    "तेरी रिज़ ने सारे नियम तोड़ दिए! 📜",
-                    "Your rizz makes everyone weak in the knees! 🦵",
-                    "Tera rizz level next level hai! 🚀",
-                    "तू ही रिज़ का बादशाह/मलिका है! 👑"
-                ],
-                'iq': [
-                    "तू सर्टिफाइड जीनियस है! 🧠",
-                    "Your IQ is higher than room temperature! 🌡️",
-                    "Itna smart ki Einstein bhi feel kare average! 🤓",
-                    "तू इस ऑपरेशन का दिमाग है! 💡",
-                    "You're the definition of intellect! 📚",
-                    "Teri IQ ne sabko chakkar mein daal diya! 😵",
-                    "तू तो बुद्धिमानों का बुद्धिमान है! 🏆",
-                    "You're so smart you make computers jealous! 💻",
-                    "Itna genius ki Google bhi tujhse puchhe! 🔍",
-                    "तू ही ज्ञान का सागर है! 🌊"
-                ],
-                'stupid': [
-                    "तू इतना बेवकूफ है कि मेंढक को ब्लेंडर में डाल दे! 🐸",
-                    "You're the reason instructions exist! 📋",
-                    "Itna dumb ki machhli ko tairna sikhaye! 🐟",
-                    "तू 'होल्ड माय बियर' का अवतार है! 🍺",
-                    "You make a rock look smart! 🪨",
-                    "Teri stupidity ne sabko hansa diya! 😂",
-                    "तू तो बेवकूफी का प्रतीक है! 🏆",
-                    "You'd try to charge your phone in the microwave! 📱",
-                    "Itna stupid ki khud ko hi confuse kar le! 🤔",
-                    "तू ही मूर्खों के राजा है! 👑"
-                ],
-                'sigma': [
-                    "तू अकेला भेड़िया है – सच्चा सिग्मा! 🐺",
-                    "You don't follow rules, you make them! 👑",
-                    "Teri sigma vibe ne sabko silent kar diya! 🤐",
-                    "तू पैक का सिग्मा है! 🐾",
-                    "You're the definition of independent! 🌟",
-                    "Itna sigma ki validation ki zaroorat nahi! 💪",
-                    "तू ही सिग्माओं का सिग्मा है! 🐺",
-                    "You're the lone wolf that leads the pack! 🐾",
-                    "Teri sigma energy ne sabko impress kar diya! 🔥",
-                    "तू ही अपनी दुनिया का राजा है! 🌍"
-                ],
-                'pookie': [
-                    "तू सबसे क्यूट पूकी है! 🧸",
-                    "You're so pookie you make teddy bears jealous! 🐻",
-                    "Itna pookie ki marshmallow bhi sharm jaye! ☁️",
-                    "तू ग्रुप का पूकी है! 💕",
-                    "You're the ultimate pookie bear! 🧸",
-                    "Teri pookie-ness ne sabko pighla diya! 🫠",
-                    "तू तो पूकी का पर्याय है! 🏆",
-                    "You're so pookie you make hearts melt! 💖",
-                    "Itna pookie ki log tujhe gale laga le! 🤗",
-                    "तू ही प्यार का पुतला है! 💞"
-                ],
-                'baddie': [
-                    "तू टोटल बैडी है – स्ले! 💅",
-                    "You're so baddie you make everyone else look basic! 🔥",
-                    "Teri baddie energy ne sabko hila diya! 💃",
-                    "तू फियरलेस की परिभाषा है! 🦁",
-                    "You're the baddie that runs the world! 🌍",
-                    "Itni baddie ki shaitan bhi sharm jaye! 😈",
-                    "तू तो बैडियों की रानी है! 👑",
-                    "You're so baddie you make the devil blush! 😈",
-                    "Tera baddie level next level hai! 🚀",
-                    "तू ही सबकी सपनों की बैडी है! 💖"
-                ]
-            }
-            if meter_type in lines:
-                return random.choice(lines[meter_type])
-            return "तू कमाल है! 🌟 (You're amazing!)"
+            return "✨ You're amazing! ✨"
 
         @register_cmd("studmeter")
         async def cmd_studmeter(event, arg):
@@ -16124,6 +15905,7 @@ async def run_user_bot(session_string, chat_id):
                     await event.reply(f"📊 **Baddie Meter**\n{name} is **{percent}%** Baddie!\n\n{line}")
                 except:
                     pass
+
         # ─── BEST FRIEND, MARRIAGE, DIVORCE ──────────────────────────────────
         @register_cmd("bestfrnd")
         async def cmd_bestfrnd(event, arg):
@@ -16264,23 +16046,6 @@ async def run_user_bot(session_string, chat_id):
                 await event.answer("Unknown action.")
 
         # ─── FUN RAIDS ──────────────────────────────────────────────────────────
-        shayari_texts = ["Shayari1", "Shayari2", "Shayari3"]
-        rizz_texts = ["Rizz1", "Rizz2", "Rizz3"]
-        pickup_texts = ["Pickup1", "Pickup2", "Pickup3"]
-        romance_texts = ["Romance1", "Romance2", "Romance3"]
-        troll_texts = ["Troll1", "Troll2", "Troll3"]
-        ragebait_texts = ["Ragebait1", "Ragebait2", "Ragebait3"]
-        roast_texts = ["Roast1", "Roast2", "Roast3"]
-        attack_texts = ["Attack1", "Attack2", "Attack3"]
-        war_texts = ["War1", "War2", "War3"]
-        savage_texts = ["Savage1", "Savage2", "Savage3"]
-        ultra_texts = ["Ultra1", "Ultra2", "Ultra3"]
-        shame_texts = ["Shame1", "Shame2", "Shame3"]
-        diss_texts = ["Diss1", "Diss2", "Diss3"]
-        devil_texts = ["Devil1", "Devil2", "Devil3"]
-        karma_texts = ["Karma1", "Karma2", "Karma3"]
-        doom_texts = ["Doom1", "Doom2", "Doom3"]
-
         @register_cmd("shayariraid", needs_reply=True)
         async def cmd_shayariraid(event, arg):
             targets = await get_targets(event, arg)
@@ -16897,19 +16662,6 @@ async def run_user_bot(session_string, chat_id):
                 await safe_edit(event, "⚠️ No active raid for these users")
 
         # ─── PREMIUM RAID START/STOP ──────────────────────────────────────────
-        premium_raid_texts = {
-            "mr": ["MR1", "MR2"], "mr2": ["MR2a", "MR2b"], "br": ["BR1", "BR2"],
-            "br2": ["BR2a", "BR2b"], "br3": ["BR3a", "BR3b"], "sqr": ["SQR1", "SQR2"],
-            "sq2": ["SQ2a", "SQ2b"], "cr": ["CR1", "CR2"], "bar": ["BAR1", "BAR2"],
-            "gr": ["GR1", "GR2"]
-        }
-        premium_spam_texts = {
-            "ms": ["MS1", "MS2"], "ms2": ["MS2a", "MS2b"], "bs": ["BS1", "BS2"],
-            "bs2": ["BS2a", "BS2b"], "bs3": ["BS3a", "BS3b"], "sqs": ["SQS1", "SQS2"],
-            "sqs2": ["SQS2a", "SQS2b"], "cs": ["CS1", "CS2"], "bas": ["BAS1", "BAS2"],
-            "gs": ["GS1", "GS2"]
-        }
-
         for start_cmd, stop_cmd in [
             ("mr", "smr"), ("mr2", "smr2"), ("br", "sbr"), ("br2", "sbr2"),
             ("br3", "sbr3"), ("sqr", "ssqr"), ("sq2", "ssq2"), ("cr", "scr"),
@@ -16944,7 +16696,6 @@ async def run_user_bot(session_string, chat_id):
                 else:
                     await safe_edit(event, f"⚠️ No active premium raid `{cmd}`.")
 
-        # ─── PREMIUM SPAM COMMANDS (converted to spray tasks like deathgod) ──
         for start_cmd, stop_cmd in [
             ("ms", "sms"), ("ms2", "sms2"), ("bs", "sbs"), ("bs2", "sbs2"),
             ("bs3", "sbs3"), ("sqs", "ssqs"), ("sqs2", "ssqs2"), ("cs", "scs"),
@@ -16952,73 +16703,32 @@ async def run_user_bot(session_string, chat_id):
         ]:
             @register_cmd(start_cmd, needs_reply=True, premium=True)
             async def start_premium_spam(event, arg, cmd=start_cmd):
-                if cmd not in premium_spam_texts:
-                    await safe_edit(event, f"❌ No text list for `{cmd}`.")
+                targets = await get_targets(event, arg)
+                if not targets:
                     return
-                texts = premium_spam_texts[cmd]
-                if not texts:
-                    await safe_edit(event, f"⚠️ Text list for `{cmd}` is empty.")
-                    return
-                chat = event.chat_id
-                count = None
-                if arg and arg.strip().isdigit():
-                    count = int(arg.strip())
-                    if count < 1: count = 1
-                    if count > 1000: count = 1000
-                reply_to = None
-                target_user = None
-                if event.is_reply:
-                    reply = await event.get_reply_message()
-                    if reply:
-                        reply_to = reply.id
-                        target_user = reply.sender_id
-                        if target_user and await is_protected(target_user, cmd):
-                            await safe_edit(event, f"🚫 This user is protected from `{cmd}`.")
-                            return
-                task_key = (chat, cmd)
-                if task_key in user_bot.premium_spray_tasks and not user_bot.premium_spray_tasks[task_key].done():
-                    await safe_edit(event, f"⚠️ Already running `{cmd}` in this chat.")
-                    return
-                await safe_edit(event, f"💥 Premium Spam `{cmd}` started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}...")
-                async def loop():
-                    sent = 0
-                    idx = 0
-                    try:
-                        while task_key in user_bot.premium_spray_tasks:
-                            if count is not None and sent >= count:
-                                break
-                            if target_user and sent % 10 == 0 and await is_protected(target_user, cmd):
-                                await safe_send(chat, f"🛑 Target is now protected. Stopping `{cmd}`.")
-                                break
-                            txt = texts[idx % len(texts)]
-                            idx += 1
-                            sent += 1
-                            await safe_send(chat, txt, reply_to=reply_to)
-                            if sent % 30 == 0:
-                                await asyncio.sleep(3)
-                            await asyncio.sleep(user_bot.SPRAY_DELAY)
-                    except asyncio.CancelledError:
-                        pass
-                    finally:
-                        user_bot.premium_spray_tasks.pop(task_key, None)
-                        if sent > 0:
-                            await safe_send(chat, f"✅ Premium Spam `{cmd}` done: {sent} messages sent.")
-                user_bot.premium_spray_tasks[task_key] = asyncio.create_task(loop())
-                await safe_edit(event, f"💥 Premium Spam `{cmd}` started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}")
+                if cmd not in user_bot.premium_spam_targets:
+                    user_bot.premium_spam_targets[cmd] = {}
+                for uid in targets:
+                    user_bot.premium_spam_targets[cmd][uid] = None
+                added = ", ".join(str(uid) for uid in targets)
+                await safe_edit(event, f"💣 Premium Spam `{cmd}` started on {added} (infinite).")
 
             @register_cmd(stop_cmd, premium=True)
             async def stop_premium_spam(event, arg, cmd=start_cmd):
-                chat = event.chat_id
-                task_key = (chat, cmd)
-                if task_key in user_bot.premium_spray_tasks:
-                    try:
-                        user_bot.premium_spray_tasks[task_key].cancel()
-                    except:
-                        pass
-                    user_bot.premium_spray_tasks.pop(task_key, None)
-                    await safe_edit(event, f"🛑 Premium Spam `{cmd}` stopped.")
+                targets = await get_targets(event, arg)
+                if not targets:
+                    if cmd in user_bot.premium_spam_targets:
+                        del user_bot.premium_spam_targets[cmd]
+                    await safe_edit(event, f"🛑 Premium Spam `{cmd}` stopped for all.")
+                    return
+                if cmd in user_bot.premium_spam_targets:
+                    for uid in targets:
+                        user_bot.premium_spam_targets[cmd].pop(uid, None)
+                    if not user_bot.premium_spam_targets[cmd]:
+                        del user_bot.premium_spam_targets[cmd]
+                    await safe_edit(event, f"🛑 Premium Spam `{cmd}` stopped for given users.")
                 else:
-                    await safe_edit(event, f"⚠️ No active premium spam `{cmd}` in this chat.")
+                    await safe_edit(event, f"⚠️ No active premium spam `{cmd}`.")
 
         @register_cmd("addadmin", needs_reply=True)
         async def cmd_addadmin(event, arg):
@@ -17104,14 +16814,6 @@ async def run_user_bot(session_string, chat_id):
         @register_cmd("flip")
         async def cmd_flip(event, _):
             await safe_edit(event, f"🪙 Coin Flip\n━━━━━━━━━━━━━━━\n👉 {random.choice(['Heads', 'Tails'])}")
-
-        truth_texts = ["Truth1", "Truth2"]
-        dare_texts = ["Dare1", "Dare2"]
-        situation_texts = ["Situation1", "Situation2"]
-        joke_list = ["Joke1", "Joke2"]
-        fact_list = ["Fact1", "Fact2"]
-        compliment_list = ["Compliment1", "Compliment2"]
-        quote_list = ["Quote1", "Quote2"]
 
         @register_cmd("truth")
         async def cmd_truth(event, _):
@@ -17405,8 +17107,6 @@ async def run_user_bot(session_string, chat_id):
             else:
                 await safe_edit(event, "❌ Invalid action. Use `set` or `stop`.")
 
-        # ─── DEATHGOD ──────────────────────────────────────────────────────────
-        deathgod_replies = ["☠️ Deathgod 1", "☠️ Deathgod 2", "☠️ Deathgod 3"]
         @register_cmd("deathgod")
         async def cmd_deathgod(event, arg):
             chat = event.chat_id
@@ -17464,6 +17164,346 @@ async def run_user_bot(session_string, chat_id):
                 await safe_edit(event, "🛑 Deathgod stopped.")
             else:
                 await safe_edit(event, "⚠️ No active Deathgod spray in this chat.")
+
+        # ─── DM SHIELD COMMANDS ──────────────────────────────────────────────────
+        @register_cmd("dmshield")
+        async def cmd_dmshield(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            arg = arg.strip().lower()
+            if not arg:
+                status = "🟢 ON" if user_bot.dm_shield_enabled else "🔴 OFF"
+                await safe_edit(event, f"🛡️ DM Shield Status: {status}")
+                return
+            if arg in ("on", "off"):
+                user_bot.dm_shield_enabled = (arg == "on")
+                await safe_edit(event, f"✅ DM Shield {'enabled' if user_bot.dm_shield_enabled else 'disabled'}")
+            else:
+                await safe_edit(event, "❌ Usage: .dmshield on/off")
+
+        @register_cmd("approve")
+        async def cmd_approve(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            targets = await get_targets(event, arg)
+            if not targets:
+                return
+            added = []
+            for uid in targets:
+                user_bot.dm_approved.add(uid)
+                added.append(str(uid))
+            await safe_edit(event, f"✅ Approved: {', '.join(added)}")
+
+        @register_cmd("unapprove")
+        async def cmd_unapprove(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            targets = await get_targets(event, arg)
+            if not targets:
+                return
+            removed = []
+            for uid in targets:
+                if uid in user_bot.dm_approved:
+                    user_bot.dm_approved.discard(uid)
+                    removed.append(str(uid))
+            await safe_edit(event, f"🛑 Removed approval: {', '.join(removed)}")
+
+        @register_cmd("block", needs_reply=True)
+        async def cmd_block(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            targets = await get_targets(event, arg)
+            if not targets:
+                return
+            for uid in targets:
+                await block_user(me.id, uid)
+            await safe_edit(event, f"✅ Blocked: {', '.join(str(uid) for uid in targets)}")
+
+        @register_cmd("unblock", needs_reply=True)
+        async def cmd_unblock(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            targets = await get_targets(event, arg)
+            if not targets:
+                return
+            for uid in targets:
+                await unblock_user(me.id, uid)
+            await safe_edit(event, f"✅ Unblocked: {', '.join(str(uid) for uid in targets)}")
+
+        @register_cmd("blockedlist")
+        async def cmd_blockedlist(event, _):
+            if not is_admin(event.sender_id):
+                return
+            if not user_bot.dm_blocked:
+                await safe_edit(event, "📭 No blocked users.")
+                return
+            msg = "🚫 Blocked Users:\n"
+            for uid in user_bot.dm_blocked:
+                try:
+                    u = await user_bot.get_entity(uid)
+                    name = f"@{u.username}" if u.username else u.first_name or str(uid)
+                    msg += f"• {uid} → {name}\n"
+                except:
+                    msg += f"• {uid}\n"
+            await safe_edit(event, msg)
+
+        @register_cmd("addfilter")
+        async def cmd_addfilter(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            if not arg:
+                return
+            word = arg.strip().lower()
+            if word in user_bot.filters:
+                await safe_edit(event, f"⚠️ Filter '{word}' already exists.")
+                return
+            user_bot.filters.append(word)
+            save_filters()
+            await safe_edit(event, f"✅ Filter added: `{word}`")
+
+        @register_cmd("delfilter")
+        async def cmd_delfilter(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            if not arg:
+                return
+            word = arg.strip().lower()
+            if word not in user_bot.filters:
+                await safe_edit(event, f"⚠️ Filter '{word}' not found.")
+                return
+            user_bot.filters.remove(word)
+            save_filters()
+            await safe_edit(event, f"🗑️ Filter removed: `{word}`")
+
+        @register_cmd("listfilters")
+        async def cmd_listfilters(event, _):
+            if not is_admin(event.sender_id):
+                return
+            if not user_bot.filters:
+                await safe_edit(event, "📭 No filters set.")
+                return
+            msg = "📋 Filters:\n" + "\n".join(f"• `{w}`" for w in user_bot.filters)
+            await safe_edit(event, msg)
+
+        @register_cmd("setautoreply")
+        async def cmd_setautoreply(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            if not arg:
+                return
+            user_bot.auto_reply = arg.strip()
+            save_autoreply(user_bot.auto_reply)
+            await safe_edit(event, f"✅ Auto-reply set:\n{user_bot.auto_reply}")
+
+        @register_cmd("delautoreply")
+        async def cmd_delautoreply(event, _):
+            if not is_admin(event.sender_id):
+                return
+            user_bot.auto_reply = None
+            save_autoreply("")
+            await safe_edit(event, "🗑️ Auto-reply removed.")
+
+        @register_cmd("godprotection")
+        async def cmd_godprotection(event, arg):
+            if not is_admin(event.sender_id):
+                return
+            arg = arg.strip().lower()
+            cid = event.chat_id
+            uid = me.id
+            if not arg:
+                try:
+                    async with db_pool.acquire() as conn:
+                        row = await conn.fetchrow("SELECT * FROM god_protection WHERE uid = $1 AND chat_id = $2", uid, cid)
+                    if row:
+                        status = "✅ ON" if row["enabled"] else "❌ OFF"
+                        await safe_edit(event,
+                            f"🛡️ **God Protection**\nChat: `{cid}`\nStatus: {status}\n"
+                            f"Action: `{row['action']}`\nAuto-mute: `{row['auto_mute']}` ({row['mute_min']}m)\n"
+                            f"Threshold: {row['threshold_mentions']} mentions in {row['threshold_sec']}s\n"
+                            f"`.godprotection on/off` to toggle")
+                    else:
+                        await safe_edit(event, "🛡️ **God Protection** — No config yet.\n`.godprotection on` to enable.")
+                except Exception as e:
+                    await safe_edit(event, f"❌ DB error: {e}")
+                return
+            if arg == "on":
+                try:
+                    async with db_pool.acquire() as conn:
+                        await conn.execute(
+                            """INSERT INTO god_protection (uid, chat_id, action, auto_mute, mute_min, threshold_mentions, threshold_sec, enabled)
+                               VALUES ($1, $2, 'delete', TRUE, 5, 5, 10, TRUE)
+                               ON CONFLICT (uid, chat_id) DO UPDATE SET enabled = TRUE""",
+                            uid, cid)
+                    user_bot.god_protection.add(cid)
+                    await safe_edit(event, "🛡️ **God Protection: ENABLED** ✅")
+                except Exception as e:
+                    await safe_edit(event, f"❌ Error: {e}")
+            elif arg == "off":
+                try:
+                    async with db_pool.acquire() as conn:
+                        await conn.execute("UPDATE god_protection SET enabled = FALSE WHERE uid = $1 AND chat_id = $2", uid, cid)
+                    user_bot.god_protection.discard(cid)
+                    await safe_edit(event, "🛡️ **God Protection: DISABLED** ❌")
+                except Exception as e:
+                    await safe_edit(event, f"❌ Error: {e}")
+            else:
+                await safe_edit(event, "❌ Usage: `.godprotection on/off`")
+
+        @register_cmd("setgp")
+        async def cmd_setgp(event, arg):
+            parts = arg.strip().split()
+            if not parts:
+                await safe_edit(event, "❌ Usage: `.setgp action delete/mute/ban/kick` | `.setgp automute on/off` | `.setgp threshold <mentions> <sec>`")
+                return
+            cid = event.chat_id
+            uid = me.id
+            sub = parts[0].lower()
+            try:
+                async with db_pool.acquire() as conn:
+                    if sub == "action" and len(parts) >= 2 and parts[1].lower() in ("delete","mute","ban","kick"):
+                        await conn.execute("UPDATE god_protection SET action = $1 WHERE uid = $2 AND chat_id = $3", parts[1].lower(), uid, cid)
+                        await safe_edit(event, f"✅ GP action set to `{parts[1].lower()}`")
+                    elif sub == "automute" and len(parts) >= 2:
+                        val = parts[1].lower() == "on"
+                        await conn.execute("UPDATE god_protection SET auto_mute = $1 WHERE uid = $2 AND chat_id = $3", val, uid, cid)
+                        await safe_edit(event, f"✅ GP auto-mute set to `{val}`")
+                    elif sub == "threshold" and len(parts) >= 3:
+                        try:
+                            mentions, seconds = int(parts[1]), int(parts[2])
+                            await conn.execute("UPDATE god_protection SET threshold_mentions = $1, threshold_sec = $2 WHERE uid = $3 AND chat_id = $4", mentions, seconds, uid, cid)
+                            await safe_edit(event, f"✅ GP threshold: {mentions} mentions / {seconds}s")
+                        except ValueError:
+                            await safe_edit(event, "❌ Provide numbers: `.setgp threshold 5 10`")
+                    elif sub == "mutemin" and len(parts) >= 2:
+                        try:
+                            mins = int(parts[1])
+                            await conn.execute("UPDATE god_protection SET mute_min = $1 WHERE uid = $2 AND chat_id = $3", mins, uid, cid)
+                            await safe_edit(event, f"✅ GP mute duration set to {mins} min")
+                        except ValueError:
+                            await safe_edit(event, "❌ Provide number: `.setgp mutemin 5`")
+                    else:
+                        await safe_edit(event, "❌ Invalid sub-command.")
+            except Exception as e:
+                await safe_edit(event, f"❌ DB error: {e}")
+
+        # ─── GOD PROTECTION AUTO HANDLER ──────────────────────────────────────
+        async def _gp_take_action(cid, uid, action, auto_mute=False, mute_min=5):
+            try:
+                if action == "delete":
+                    pass
+                elif action == "mute" or (auto_mute and action == "delete"):
+                    until = datetime.now() + timedelta(minutes=mute_min) if mute_min > 0 else None
+                    rights = ChatBannedRights(until_date=until, send_messages=True, send_media=True,
+                        send_stickers=True, send_gifs=True, send_games=True, send_inline=True, send_polls=True)
+                    await user_bot(EditBannedRequest(cid, uid, rights))
+                elif action == "kick":
+                    rights = ChatBannedRights(until_date=datetime.now() + timedelta(seconds=30), view_messages=True)
+                    await user_bot(EditBannedRequest(cid, uid, rights))
+                    await asyncio.sleep(1)
+                    rights2 = ChatBannedRights(until_date=None, view_messages=False)
+                    await user_bot(EditBannedRequest(cid, uid, rights2))
+                elif action == "ban":
+                    rights = ChatBannedRights(until_date=None, view_messages=True, send_messages=True,
+                        send_media=True, send_stickers=True, send_gifs=True, send_games=True, send_inline=True, send_polls=True)
+                    await user_bot(EditBannedRequest(cid, uid, rights))
+            except Exception as e:
+                print(f"GP action error on {uid} in {cid}: {e}")
+
+        @user_bot.on(events.NewMessage(incoming=True))
+        async def god_protection_auto_handler(event):
+            if not event.is_group:
+                return
+            cid = event.chat_id
+            if cid not in user_bot.god_protection:
+                return
+            if event.sender_id in (me.id, 777000):
+                return
+            if not event.text:
+                return
+            uid = me.id
+            try:
+                async with db_pool.acquire() as conn:
+                    row = await conn.fetchrow("SELECT * FROM god_protection WHERE uid = $1 AND chat_id = $2 AND enabled = TRUE", uid, cid)
+                if not row:
+                    user_bot.god_protection.discard(cid)
+                    return
+            except:
+                return
+            action = row["action"]
+            auto_mute = row["auto_mute"]
+            mute_min = row["mute_min"]
+            thresh_mentions = row["threshold_mentions"]
+            thresh_sec = row["threshold_sec"]
+            sid = event.sender_id
+            now = time.time()
+
+            mentions = re.findall(r'@\w+|@\d+', event.text)
+            if mentions:
+                if sid not in user_bot.gp_mentions:
+                    user_bot.gp_mentions[sid] = []
+                user_bot.gp_mentions[sid].append(now)
+                user_bot.gp_mentions[sid] = [t for t in user_bot.gp_mentions[sid] if now - t < thresh_sec]
+                if len(user_bot.gp_mentions[sid]) >= thresh_mentions:
+                    try:
+                        await event.delete()
+                    except:
+                        pass
+                    await _gp_take_action(cid, sid, action, auto_mute, mute_min)
+                    await safe_send(cid, f"🛡️ **GP:** Mass mention detected. Action taken on `{sid}`.")
+                    user_bot.gp_mentions[sid] = []
+
+            if sid not in user_bot.gp_duplicate:
+                user_bot.gp_duplicate[sid] = []
+            user_bot.gp_duplicate[sid].append((event.text.lower().strip(), now))
+            user_bot.gp_duplicate[sid] = [(t, ts) for t, ts in user_bot.gp_duplicate[sid] if now - ts < 30]
+            texts_in_window = [t for t,_ in user_bot.gp_duplicate[sid]]
+            if len(texts_in_window) >= 3 and len(set(texts_in_window)) <= 1:
+                try:
+                    await event.delete()
+                except:
+                    pass
+                await _gp_take_action(cid, sid, "delete" if action != "delete" else action, auto_mute, mute_min)
+                user_bot.gp_duplicate[sid] = []
+
+            if sid not in user_bot.gp_flood:
+                user_bot.gp_flood[sid] = []
+            user_bot.gp_flood[sid].append(now)
+            user_bot.gp_flood[sid] = [t for t in user_bot.gp_flood[sid] if now - t < 5]
+            if len(user_bot.gp_flood[sid]) >= 5:
+                try:
+                    await event.delete()
+                except:
+                    pass
+                await _gp_take_action(cid, sid, "mute" if action == "delete" else action, auto_mute, mute_min)
+                await safe_send(cid, f"🛡️ **GP:** Flood detected. Muted `{sid}`.")
+                user_bot.gp_flood[sid] = []
+
+        # ─── DM SHIELD INCOMING HANDLER ──────────────────────────────────────
+        @user_bot.on(events.NewMessage(incoming=True))
+        async def dm_shield_handler(event):
+            if event.out or not event.is_private:
+                return
+            if not user_bot.dm_shield_enabled:
+                return
+            sender = event.sender_id
+            if sender == me.id or sender in OWNER_IDS:
+                return
+            if sender in user_bot.dm_approved:
+                return
+            if await is_blocked(me.id, sender):
+                return
+            warns = await get_warnings(me.id, sender)
+            if warns >= 3:
+                await block_user(me.id, sender)
+                await safe_send(sender, "🚫 You have been blocked due to excessive messages.")
+                return
+            new_warns = await add_warning(me.id, sender)
+            left = 3 - new_warns
+            if left <= 0:
+                await block_user(me.id, sender)
+                await safe_send(sender, "🚫 You have been blocked.")
+            else:
+                await safe_send(sender, f"⚠️ **Warning {new_warns}/3**\nYou are not approved to DM this user. Please request approval.\nYou have {left} warning(s) left before being blocked.")
 
         # ─── ID ──────────────────────────────────────────────────────────────────
         @register_cmd("id")
@@ -17607,7 +17647,7 @@ async def run_user_bot(session_string, chat_id):
         # ─── DISPATCHER ──────────────────────────────────────────────────────
         @user_bot.on(events.NewMessage)
         async def dispatcher(event):
-            if await get_freeze(me.id):  # freeze check
+            if await get_freeze(chat_id):
                 return
             text = event.raw_text
             if not text:
@@ -17661,7 +17701,7 @@ async def run_user_bot(session_string, chat_id):
         # ─── AUTO HANDLER ──────────────────────────────────────────────────
         @user_bot.on(events.NewMessage)
         async def auto_handler(event):
-            if await get_freeze(me.id):
+            if await get_freeze(chat_id):
                 return
             msg_id = event.id
             if msg_id in user_bot.filter_reply_ids:
@@ -17670,37 +17710,9 @@ async def run_user_bot(session_string, chat_id):
 
             sender = event.sender_id
             chat = event.chat_id
-            now = time.time()
             if not sender or sender in OWNER_IDS:
                 pass
 
-            # ─── ROSE FILTERS (chat-specific) ───
-            if user_bot.rose_filters and event.text:
-                text = event.text.strip().lower()
-                cid = event.chat_id
-                key = (text, cid)
-                if key in user_bot.rose_filters:
-                    reply = user_bot.rose_filters[key]
-                    try:
-                        sent = await safe_send(chat, reply, reply_to=event.id)
-                        if sent:
-                            user_bot.filter_reply_ids.add(sent.id)
-                    except:
-                        pass
-                    return
-                # global filter (chat_id=0)
-                key2 = (text, 0)
-                if key2 in user_bot.rose_filters:
-                    reply = user_bot.rose_filters[key2]
-                    try:
-                        sent = await safe_send(chat, reply, reply_to=event.id)
-                        if sent:
-                            user_bot.filter_reply_ids.add(sent.id)
-                    except:
-                        pass
-                    return
-
-            # ─── USER FILTERS (original) ───
             if user_bot.user_filters and event.text:
                 msg_text = event.raw_text or ""
                 for trigger, reply_data in user_bot.user_filters.items():
@@ -17714,6 +17726,8 @@ async def run_user_bot(session_string, chat_id):
                                 continue
                             if sent:
                                 user_bot.filter_reply_ids.add(sent.id)
+                                if len(user_bot.filter_reply_ids) > 100:
+                                    user_bot.filter_reply_ids.clear()
                         except Exception as e:
                             print(f"Filter reply error: {e}")
                         break
@@ -17723,7 +17737,6 @@ async def run_user_bot(session_string, chat_id):
             if not sender or sender in OWNER_IDS:
                 return
 
-            # ─── MUTE CHECK ───
             if sender in user_bot.muted_users or sender in user_bot.global_muted:
                 try:
                     await event.delete()
@@ -17731,7 +17744,6 @@ async def run_user_bot(session_string, chat_id):
                     pass
                 return
 
-            # ─── WATCHSPAM ───
             ws_key = (chat, sender)
             if ws_key in user_bot.watch_spam:
                 now = time.time()
@@ -17745,7 +17757,6 @@ async def run_user_bot(session_string, chat_id):
                         pass
                     return
 
-            # ─── GROUP LOCK ───
             if chat in user_bot.group_locks:
                 if not is_admin(sender):
                     try:
@@ -17754,7 +17765,6 @@ async def run_user_bot(session_string, chat_id):
                         pass
                     return
 
-            # ─── REPLY RAID ──────────────────────────────────────────────
             if sender in user_bot.reply_users:
                 if await is_protected(sender, "reply"):
                     await safe_send(chat, "🚫 This user has protected themselves from reply raid.", reply_to=event.id)
@@ -17865,7 +17875,6 @@ async def run_user_bot(session_string, chat_id):
                 user_bot.reply_cooldowns[sender] = time.time()
                 return
 
-            # ─── FUN RAIDS ──────────────────────────────────────────────
             if sender in user_bot.shayari_raid:
                 if await is_protected(sender, "shayariraid"):
                     await safe_send(chat, "🚫 This user has protected themselves from Shayari raid.", reply_to=event.id)
@@ -18104,7 +18113,6 @@ async def run_user_bot(session_string, chat_id):
                 user_bot.reply_cooldowns[sender] = now
                 return
 
-            # ─── PREMIUM RAIDS ─────────────────────────────────────────
             for cmd, targets_dict in user_bot.premium_raid_targets.items():
                 if sender in targets_dict:
                     if await is_protected(sender, cmd):
@@ -18115,8 +18123,15 @@ async def run_user_bot(session_string, chat_id):
                     user_bot.reply_cooldowns[sender] = now
                     return
 
-            # ─── PREMIUM SPAM (handled by spray tasks) ────────────────
-            # No need to handle here; spray tasks run independently.
+            for cmd, targets_dict in user_bot.premium_spam_targets.items():
+                if sender in targets_dict:
+                    if await is_protected(sender, cmd):
+                        await safe_send(chat, f"🚫 This user has protected themselves from premium spam `{cmd}`.", reply_to=event.id)
+                        return
+                    text_list = premium_spam_texts.get(cmd, [])
+                    await safe_send(chat, random.choice(text_list) if text_list else f"💣 Premium Spam {cmd}!", reply_to=event.id)
+                    user_bot.reply_cooldowns[sender] = now
+                    return
 
         # ─── CACHE & ANTI-DELETE ──────────────────────────────────────────────
         @user_bot.on(events.NewMessage(outgoing=True))
@@ -18210,129 +18225,6 @@ async def run_user_bot(session_string, chat_id):
                 }
                 history.append(entry)
                 save_sangmata(sender, history)
-            except:
-                pass
-
-        # ─── TYPING EFFECT WITH MULTIPLE STYLES ─────────────────────────────
-        @register_cmd("typing", premium=True)
-        async def cmd_typing(event, arg):
-            if not arg:
-                return
-            
-            parts = arg.split(maxsplit=1)
-            style = "bold"
-            text = arg
-            
-            if len(parts) == 2 and parts[0].lower() in ['bold', 'italic', 'double', 'script', 'mono', 'circle', 'square', 'default']:
-                style = parts[0].lower()
-                text = parts[1]
-            
-            bold_map = {
-                'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵',
-                'i': '𝗶', 'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽',
-                'q': '𝗾', 'r': '𝗿', 's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅',
-                'y': '𝘆', 'z': '𝘇',
-                'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛',
-                'I': '𝗜', 'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣',
-                'Q': '𝗤', 'R': '𝗥', 'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫',
-                'Y': '𝗬', 'Z': '𝗭',
-                '0': '𝟬', '1': '𝟭', '2': '𝟮', '3': '𝟯', '4': '𝟰',
-                '5': '𝟱', '6': '𝟲', '7': '𝟳', '8': '𝟴', '9': '𝟵'
-            }
-            italic_map = {
-                'a': '𝘢', 'b': '𝘣', 'c': '𝘤', 'd': '𝘥', 'e': '𝘦', 'f': '𝘧', 'g': '𝘨', 'h': '𝘩',
-                'i': '𝘪', 'j': '𝘫', 'k': '𝘬', 'l': '𝘭', 'm': '𝘮', 'n': '𝘯', 'o': '𝘰', 'p': '𝘱',
-                'q': '𝘲', 'r': '𝘳', 's': '𝘴', 't': '𝘵', 'u': '𝘶', 'v': '𝘷', 'w': '𝘸', 'x': '𝘹',
-                'y': '𝘺', 'z': '𝘻',
-                'A': '𝘈', 'B': '𝘉', 'C': '𝘊', 'D': '𝘋', 'E': '𝘌', 'F': '𝘍', 'G': '𝘎', 'H': '𝘏',
-                'I': '𝘐', 'J': '𝘑', 'K': '𝘒', 'L': '𝘓', 'M': '𝘔', 'N': '𝘕', 'O': '𝘖', 'P': '𝘗',
-                'Q': '𝘘', 'R': '𝘙', 'S': '𝘚', 'T': '𝘛', 'U': '𝘜', 'V': '𝘝', 'W': '𝘞', 'X': '𝘟',
-                'Y': '𝘠', 'Z': '𝘡'
-            }
-            double_map = {
-                'a': '𝕒', 'b': '𝕓', 'c': '𝕔', 'd': '𝕕', 'e': '𝕖', 'f': '𝕗', 'g': '𝕘', 'h': '𝕙',
-                'i': '𝕚', 'j': '𝕛', 'k': '𝕜', 'l': '𝕝', 'm': '𝕞', 'n': '𝕟', 'o': '𝕠', 'p': '𝕡',
-                'q': '𝕢', 'r': '𝕣', 's': '𝕤', 't': '𝕥', 'u': '𝕦', 'v': '𝕧', 'w': '𝕨', 'x': '𝕩',
-                'y': '𝕪', 'z': '𝕫',
-                'A': '𝔸', 'B': '𝔹', 'C': 'ℂ', 'D': '𝔻', 'E': '𝔼', 'F': '𝔽', 'G': '𝔾', 'H': 'ℍ',
-                'I': '𝕀', 'J': '𝕁', 'K': '𝕂', 'L': '𝕃', 'M': '𝕄', 'N': 'ℕ', 'O': '𝕆', 'P': 'ℙ',
-                'Q': 'ℚ', 'R': 'ℝ', 'S': '𝕊', 'T': '𝕋', 'U': '𝕌', 'V': '𝕍', 'W': '𝕎', 'X': '𝕏',
-                'Y': '𝕐', 'Z': 'ℤ',
-                '0': '𝟘', '1': '𝟙', '2': '𝟚', '3': '𝟛', '4': '𝟜',
-                '5': '𝟝', '6': '𝟞', '7': '𝟟', '8': '𝟠', '9': '𝟡'
-            }
-            script_map = {
-                'a': '𝓪', 'b': '𝓫', 'c': '𝓬', 'd': '𝓭', 'e': '𝓮', 'f': '𝓯', 'g': '𝓰', 'h': '𝓱',
-                'i': '𝓲', 'j': '𝓳', 'k': '𝓴', 'l': '𝓵', 'm': '𝓶', 'n': '𝓷', 'o': '𝓸', 'p': '𝓹',
-                'q': '𝓺', 'r': '𝓻', 's': '𝓼', 't': '𝓽', 'u': '𝓾', 'v': '𝓿', 'w': '𝔀', 'x': '𝔁',
-                'y': '𝔂', 'z': '𝔃',
-                'A': '𝓐', 'B': '𝓑', 'C': '𝓒', 'D': '𝓓', 'E': '𝓔', 'F': '𝓕', 'G': '𝓖', 'H': '𝓗',
-                'I': '𝓘', 'J': '𝓙', 'K': '𝓚', 'L': '𝓛', 'M': '𝓜', 'N': '𝓝', 'O': '𝓞', 'P': '𝓟',
-                'Q': '𝓠', 'R': '𝓡', 'S': '𝓢', 'T': '𝓣', 'U': '𝓤', 'V': '𝓥', 'W': '𝓦', 'X': '𝓧',
-                'Y': '𝓨', 'Z': '𝓩'
-            }
-            mono_map = {
-                'a': '𝚊', 'b': '𝚋', 'c': '𝚌', 'd': '𝚍', 'e': '𝚎', 'f': '𝚏', 'g': '𝚐', 'h': '𝚑',
-                'i': '𝚒', 'j': '𝚓', 'k': '𝚔', 'l': '𝚕', 'm': '𝚖', 'n': '𝚗', 'o': '𝚘', 'p': '𝚙',
-                'q': '𝚚', 'r': '𝚛', 's': '𝚜', 't': '𝚝', 'u': '𝚞', 'v': '𝚟', 'w': '𝚠', 'x': '𝚡',
-                'y': '𝚢', 'z': '𝚣',
-                'A': '𝙰', 'B': '𝙱', 'C': '𝙲', 'D': '𝙳', 'E': '𝙴', 'F': '𝙵', 'G': '𝙶', 'H': '𝙷',
-                'I': '𝙸', 'J': '𝙹', 'K': '𝙺', 'L': '𝙻', 'M': '𝙼', 'N': '𝙽', 'O': '𝙾', 'P': '𝙿',
-                'Q': '𝚀', 'R': '𝚁', 'S': '𝚂', 'T': '𝚃', 'U': '𝚄', 'V': '𝚅', 'W': '𝚆', 'X': '𝚇',
-                'Y': '𝚈', 'Z': '𝚉'
-            }
-            circle_map = {
-                'a': 'ⓐ', 'b': 'ⓑ', 'c': 'ⓒ', 'd': 'ⓓ', 'e': 'ⓔ', 'f': 'ⓕ', 'g': 'ⓖ', 'h': 'ⓗ',
-                'i': 'ⓘ', 'j': 'ⓙ', 'k': 'ⓚ', 'l': 'ⓛ', 'm': 'ⓜ', 'n': 'ⓝ', 'o': 'ⓞ', 'p': 'ⓟ',
-                'q': 'ⓠ', 'r': 'ⓡ', 's': 'ⓢ', 't': 'ⓣ', 'u': 'ⓤ', 'v': 'ⓥ', 'w': 'ⓦ', 'x': 'ⓧ',
-                'y': 'ⓨ', 'z': 'ⓩ',
-                'A': 'Ⓐ', 'B': 'Ⓑ', 'C': 'Ⓒ', 'D': 'Ⓓ', 'E': 'Ⓔ', 'F': 'Ⓕ', 'G': 'Ⓖ', 'H': 'Ⓗ',
-                'I': 'Ⓘ', 'J': 'Ⓙ', 'K': 'Ⓚ', 'L': 'Ⓛ', 'M': 'Ⓜ', 'N': 'Ⓝ', 'O': 'Ⓞ', 'P': 'Ⓟ',
-                'Q': 'Ⓠ', 'R': 'Ⓡ', 'S': 'Ⓢ', 'T': 'Ⓣ', 'U': 'Ⓤ', 'V': 'Ⓥ', 'W': 'Ⓦ', 'X': 'Ⓧ',
-                'Y': 'Ⓨ', 'Z': 'Ⓩ',
-                '0': '⓪', '1': '①', '2': '②', '3': '③', '4': '④',
-                '5': '⑤', '6': '⑥', '7': '⑦', '8': '⑧', '9': '⑨'
-            }
-            square_map = {
-                'a': '🅰', 'b': '🅱', 'c': '🅲', 'd': '🅳', 'e': '🅴', 'f': '🅵', 'g': '🅶', 'h': '🅷',
-                'i': '🅸', 'j': '🅹', 'k': '🅺', 'l': '🅻', 'm': '🅼', 'n': '🅽', 'o': '🅾', 'p': '🅿',
-                'q': '🆀', 'r': '🆁', 's': '🆂', 't': '🆃', 'u': '🆄', 'v': '🆅', 'w': '🆆', 'x': '🆇',
-                'y': '🆈', 'z': '🆉',
-                '0': '🅾', '1': '🆒', '2': '🆓', '3': '🆔', '4': '🆕',
-                '5': '🆖', '6': '🆗', '7': '🆘', '8': '🆙', '9': '🆚'
-            }
-            
-            font_maps = {
-                'bold': bold_map,
-                'italic': italic_map,
-                'double': double_map,
-                'script': script_map,
-                'mono': mono_map,
-                'circle': circle_map,
-                'square': square_map,
-                'default': {}
-            }
-            
-            char_map = font_maps.get(style, bold_map)
-            stylish_text = ''.join(char_map.get(c, c) for c in text) if style != 'default' else text
-            
-            try:
-                await event.delete()
-            except:
-                pass
-            
-            msg = await user_bot.send_message(event.chat_id, "✍️ ")
-            
-            for i in range(1, len(stylish_text) + 1):
-                current_text = f"✍️ {stylish_text[:i]}"
-                try:
-                    await msg.edit(current_text)
-                    await asyncio.sleep(random.uniform(0.15, 0.6))
-                except Exception:
-                    pass
-            
-            try:
-                await msg.edit(f"✍️ {stylish_text}")
             except:
                 pass
 
