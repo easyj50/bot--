@@ -1931,15 +1931,15 @@ async def gift_premium(event):
 # ─── USERBOT LAUNCHER WITH RESTART ──────────────────────────────
 async def run_user_bot_with_restart(session_string, chat_id):
     restart_count = 0
-    max_restarts = 10
-    backoff = 5
+    max_restarts = 10  # एक बार में अधिकतम 10 बार restart
+    backoff = 5  # सेकंड
     last_restart_time = 0
     session_invalid_notified = False
 
     while True:
         try:
             await run_user_bot(session_string, chat_id)
-            break
+            break  # अगर सही से चला तो बाहर
         except FloodWaitError as e:
             wait = e.seconds + 5
             print(f"⏳ FloodWait: {wait}s for {chat_id}")
@@ -1948,7 +1948,7 @@ async def run_user_bot_with_restart(session_string, chat_id):
             except:
                 pass
             await asyncio.sleep(wait)
-            restart_count = 0
+            restart_count = 0  # flood के बाद restart count reset
             session_invalid_notified = False
             continue
 
@@ -1966,6 +1966,7 @@ async def run_user_bot_with_restart(session_string, chat_id):
                                 f"🔴 Session invalid for user {chat_id}")
                     except:
                         pass
+                # Delete session and stop
                 try:
                     if chat_id in active_userbots:
                         await active_userbots[chat_id].disconnect()
@@ -1974,14 +1975,16 @@ async def run_user_bot_with_restart(session_string, chat_id):
                     pass
                 user_sessions.pop(chat_id, None)
                 await delete_session(chat_id)
-                break
+                break  # Stop restart loop
 
-        except AuthKeyDuplicatedError:
+        except AuthKeyDuplicatedError as e:
+            # Session used from another place – stop auto-restart
             try:
                 await MAIN_BOT_CLIENT.send_message(chat_id,
                     "⚠️ Session used from another device. Please login again.")
             except:
                 pass
+            # Cleanup
             if chat_id in active_userbots:
                 try:
                     await active_userbots[chat_id].disconnect()
@@ -1998,8 +2001,10 @@ async def run_user_bot_with_restart(session_string, chat_id):
 
         except Exception as e:
             now = time.time()
+            # Check if it's a fatal session error
             error_msg = str(e)
             if "EOF" in error_msg or "input" in error_msg.lower() or "interactive" in error_msg.lower():
+                # Session invalid – stop
                 try:
                     await MAIN_BOT_CLIENT.send_message(chat_id,
                         "⚠️ Your session became invalid. Please login again.")
@@ -2018,6 +2023,7 @@ async def run_user_bot_with_restart(session_string, chat_id):
                 await delete_session(chat_id)
                 break
 
+            # Otherwise, handle restarts with backoff
             restart_count += 1
             if restart_count > max_restarts:
                 print(f"⚠️ Too many restarts ({restart_count}) for {chat_id}. Stopping.")
@@ -2029,9 +2035,9 @@ async def run_user_bot_with_restart(session_string, chat_id):
                     pass
                 break
 
-            wait = min(backoff * (2 ** (restart_count - 1)), 300)
+            wait = min(backoff * (2 ** (restart_count - 1)), 300)  # exponential: 5,10,20,... max 5 min
             if now - last_restart_time < 60 and restart_count > 3:
-                wait = max(wait, 60)
+                wait = max(wait, 60)  # at least 1 minute if too many restarts
 
             print(f"⚠️ Crash: {error_msg[:100]}. Restarting in {wait}s (attempt {restart_count})")
             try:
@@ -2168,86 +2174,6 @@ async def run_user_bot(session_string, chat_id):
             "text": None,
             "chat_id": None,
         }
-
-        # ─── EMPTY TEXT LISTS (user will fill) ────────────────────────────
-                       # ─── NC PATTERNS ────────────────────────────────────────────────────
-        HINDINC_PATTERNS = [
-            "{text} चुडाकड़ ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} रैंडी ˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} गरीब ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} चमार˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} भेंगे⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} रैंडी के बच्चे˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} गुलाम⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} गुलामी कर˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} चुदाई केंद्र⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} नांगा नाच कर˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} पापा बोल Mere को⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} तेरी मां नंगी करू˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} छक्के⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} भोसड़ी के˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-        ]
-
-        URDU_PATTERNS = [
-            "{text} ٹی ایم کے بی࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
-            "{text} ٹی ایم کے سی𓍢ִႋ🌷͙֒ᰔᩚ",
-            "{text} تیری ماں رندی࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
-            "{text} چوداکڑ 𓍢ִႋ🌷͙֒ᰔᩚ",
-            "{text} گلام ࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
-            "{text} رنڈی𓍢ִႋ🌷͙֒ᰔᩚ",
-            "{text} تیری ماں چھوڑ کر فیک دو ࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
-            "{text} گلامی کے آر𓍢ִႋ🌷͙֒ᰔᩚ",
-            "{text} عجیب کو باپ بول࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
-            "{text} رنڈی پوترا 𓍢ִႋ🌷͙֒ᰔᩚ",
-            "{text} چکے ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.",
-            "{text} بی ٹی ایس کے لنڈ 𓍢ִႋ🌷͙֒ᰔᩚ",
-        ]
-
-        BENGALI_PATTERNS = [
-            "{text} শালা °❀.ೃ࿔*ꫂ❁",
-            "{text} এলোমেলো ꫂ❁°❀.ೃ࿔*",
-            "{text} গরিবꫂ❁°❀.ೃ࿔*",
-            "{text} ককার ꫂ❁°❀.ೃ࿔*",
-            "{text} প্রজাতিꫂ❁°❀.ೃ࿔*",
-            "{text} এক এলোমেলোর সন্তানꫂ❁°❀.ೃ࿔*",
-            "{text} দাসꫂ❁°❀.ೃ࿔*",
-            "{text} শালা কেন্দ্রꫂ❁°❀.ೃ࿔*",
-            "{text} নগ্নꫂ❁°❀.ೃ࿔*",
-            "{text} বাবা, আমাকে বল, আমি ꫂ❁°❀.ೃ࿔*",
-            "{text} তোর মাকে বিবস্ত্র করব।ꫂ❁°❀.ೃ࿔*",
-            "{text} সিক্সার্সꫂ❁°❀.ೃ࿔*",
-            "{text} তুই হারামজাদাꫂ❁°❀.ೃ࿔*",
-        ]
-
-        BIHARI_PATTERNS = [
-            "{text} भोसड़ी के बा⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} सतमेरवनी₊˚ʚ ᗢ₊˚✧ ﾟ.",
-            "{text} गरीब⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} कॉकर के ह₊˚ʚ ᗢ₊˚✧ ﾟ.",
-            "{text} नसल⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} एगो बेतरतीब के लइका₊˚ʚ ᗢ₊˚✧ ﾟ.",
-            "{text} गुलाम⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} कमबख्त सेंटर के बा₊˚ʚ ᗢ₊˚✧ ﾟ.",
-            "{text} नंगा हो गइल बा⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} पापा बताव हम तोहार माई के {text} उतार देब।₊˚ʚ ᗢ₊˚✧ ﾟ.",
-            "{text} छक्का के लोग⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} रे हरामी₊˚ʚ ᗢ₊˚✧ ﾟ.",
-        ]
-
-        ENGLISH_PATTERNS = [
-            "{text} 🅱🅻🅾🅾🅳🆈 🅷🅴🅻🅻.𖥔 ݁ ˖ִ🛸༄˖°.",
-            "{text} 🅼🅾🆃🅷🅴🆁🅵🆄🅲🅺🅴🆁🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
-            "{text} 🅱🅸🆃🅲🅷 🆂🅾🅽.𖥔 ݁ ˖ִ🛸༄˖°.",
-            "{text} 🆂🅻🅰🆅🅴🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
-            "{text} 🆂🅾🅽 🅾🅵 🅼🅸🅰 🅺🅷🅰🅻🅸🅵🅰 .𖥔 ݁ ˖ִ🛸༄˖°.",
-            "{text} 🆂🅰🆈 🅵🆁🅴🅰🅺🆈 🅳🅰🅳🅳🆈🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
-            "{text} 🅵🆄🅲🅺🄽🄶 🅲🅴🅽🆃🆁🅴.𖥔 ݁ ˖ִ🛸༄˖°.",
-            "{text} 🆂🅾🅽 🅵🆄🅲🅺🅴🅳 🅼🅾🅼🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
-        ]
-
-        EMOJI_NC_EMOJIS = ["🐧","🦭","🦈","🫍","🐬","🐋","🐳","🐟","🐠","🐡","🦐","🦞","🦀","🦑","🐙","🪼","🦪","🪸","🫧","🦂"]
-        EMOJI_NC_PATTERN = "{text} <⋆.ೃ࿔*:･{emoji}⋆.ೃ࿔*:･>" 
-       
         # ─── TEXT LISTS ──────────────────────────────────────────────────────
         # ─── PREMIUM RAID TEXT LISTS ──────────────────────────────────────────
         mr_texts = [
@@ -13318,6 +13244,84 @@ async def run_user_bot(session_string, chat_id):
         "Maa",
         "Ke"
         ]
+              # ─── NC PATTERNS ────────────────────────────────────────────────────
+        HINDINC_PATTERNS = [
+            "{text} चुडाकड़ ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} रैंडी ˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} गरीब ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} चमार˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} भेंगे⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} रैंडी के बच्चे˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} गुलाम⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} गुलामी कर˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} चुदाई केंद्र⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} नांगा नाच कर˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} पापा बोल Mere को⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} तेरी मां नंगी करू˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} छक्के⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} भोसड़ी के˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+        ]
+
+        URDU_PATTERNS = [
+            "{text} ٹی ایم کے بی࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
+            "{text} ٹی ایم کے سی𓍢ִႋ🌷͙֒ᰔᩚ",
+            "{text} تیری ماں رندی࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
+            "{text} چوداکڑ 𓍢ִႋ🌷͙֒ᰔᩚ",
+            "{text} گلام ࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
+            "{text} رنڈی𓍢ִႋ🌷͙֒ᰔᩚ",
+            "{text} تیری ماں چھوڑ کر فیک دو ࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
+            "{text} گلامی کے آر𓍢ִႋ🌷͙֒ᰔᩚ",
+            "{text} عجیب کو باپ بول࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
+            "{text} رنڈی پوترا 𓍢ִႋ🌷͙֒ᰔᩚ",
+            "{text} چکے ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.",
+            "{text} بی ٹی ایس کے لنڈ 𓍢ִႋ🌷͙֒ᰔᩚ",
+        ]
+
+        BENGALI_PATTERNS = [
+            "{text} শালা °❀.ೃ࿔*ꫂ❁",
+            "{text} এলোমেলো ꫂ❁°❀.ೃ࿔*",
+            "{text} গরিবꫂ❁°❀.ೃ࿔*",
+            "{text} ককার ꫂ❁°❀.ೃ࿔*",
+            "{text} প্রজাতিꫂ❁°❀.ೃ࿔*",
+            "{text} এক এলোমেলোর সন্তানꫂ❁°❀.ೃ࿔*",
+            "{text} দাসꫂ❁°❀.ೃ࿔*",
+            "{text} শালা কেন্দ্রꫂ❁°❀.ೃ࿔*",
+            "{text} নগ্নꫂ❁°❀.ೃ࿔*",
+            "{text} বাবা, আমাকে বল, আমি ꫂ❁°❀.ೃ࿔*",
+            "{text} তোর মাকে বিবস্ত্র করব।ꫂ❁°❀.ೃ࿔*",
+            "{text} সিক্সার্সꫂ❁°❀.ೃ࿔*",
+            "{text} তুই হারামজাদাꫂ❁°❀.ೃ࿔*",
+        ]
+
+        BIHARI_PATTERNS = [
+            "{text} भोसड़ी के बा⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} सतमेरवनी₊˚ʚ ᗢ₊˚✧ ﾟ.",
+            "{text} गरीब⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} कॉकर के ह₊˚ʚ ᗢ₊˚✧ ﾟ.",
+            "{text} नसल⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} एगो बेतरतीब के लइका₊˚ʚ ᗢ₊˚✧ ﾟ.",
+            "{text} गुलाम⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} कमबख्त सेंटर के बा₊˚ʚ ᗢ₊˚✧ ﾟ.",
+            "{text} नंगा हो गइल बा⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} पापा बताव हम तोहार माई के {text} उतार देब।₊˚ʚ ᗢ₊˚✧ ﾟ.",
+            "{text} छक्का के लोग⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} रे हरामी₊˚ʚ ᗢ₊˚✧ ﾟ.",
+        ]
+
+        ENGLISH_PATTERNS = [
+            "{text} 🅱🅻🅾🅾🅳🆈 🅷🅴🅻🅻.𖥔 ݁ ˖ִ🛸༄˖°.",
+            "{text} 🅼🅾🆃🅷🅴🆁🅵🆄🅲🅺🅴🆁🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
+            "{text} 🅱🅸🆃🅲🅷 🆂🅾🅽.𖥔 ݁ ˖ִ🛸༄˖°.",
+            "{text} 🆂🅻🅰🆅🅴🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
+            "{text} 🆂🅾🅽 🅾🅵 🅼🅸🅰 🅺🅷🅰🅻🅸🅵🅰 .𖥔 ݁ ˖ִ🛸༄˖°.",
+            "{text} 🆂🅰🆈 🅵🆁🅴🅰🅺🆈 🅳🅰🅳🅳🆈🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
+            "{text} 🅵🆄🅲🅺🄽🄶 🅲🅴🅽🆃🆁🅴.𖥔 ݁ ˖ִ🛸༄˖°.",
+            "{text} 🆂🅾🅽 🅵🆄🅲🅺🅴🅳 🅼🅾🅼🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
+        ]
+
+        EMOJI_NC_EMOJIS = ["🐧","🦭","🦈","🫍","🐬","🐋","🐳","🐟","🐠","🐡","🦐","🦞","🦀","🦑","🐙","🪼","🦪","🪸","🫧","🦂"]
+        EMOJI_NC_PATTERN = "{text} <⋆.ೃ࿔*:･{emoji}⋆.ೃ࿔*:･>"        
+        
         # ─── LOAD/SAVE FUNCTIONS ─────────────────────────────────────────────
         def load_admins():
             try:
@@ -13480,7 +13484,7 @@ async def run_user_bot(session_string, chat_id):
         user_bot.user_filters = await load_user_filters(me.id)
         user_bot.filter_reply_ids = set()
 
-        # ─── DM SHIELD FUNCTIONS (FIXED BLOCKING) ─────────────────────
+       # ─── DM SHIELD FUNCTIONS ──────────────────────────────────────
         async def get_warnings(uid: int, target_id: int) -> int:
             async with db_pool.acquire() as conn:
                 row = await conn.fetchrow(
@@ -13511,8 +13515,10 @@ async def run_user_bot(session_string, chat_id):
                 )
 
         async def is_blocked(uid: int, target_id: int) -> bool:
+            # पहले in‑memory set में देखें (तेज़)
             if target_id in user_bot.dm_blocked:
                 return True
+            # फिर DB से verify (अगर किसी वजह से set update न हुआ हो)
             async with db_pool.acquire() as conn:
                 row = await conn.fetchrow(
                     "SELECT 1 FROM dm_blocked WHERE user_id = $1 AND blocked_id = $2",
@@ -13527,6 +13533,7 @@ async def run_user_bot(session_string, chat_id):
                     uid, target_id
                 )
                 await reset_warnings(uid, target_id)
+            # ✅ in‑memory set को भी update करें
             user_bot.dm_blocked.add(target_id)
             try:
                 await user_bot.block_user(target_id)
@@ -13540,6 +13547,7 @@ async def run_user_bot(session_string, chat_id):
                     uid, target_id
                 )
                 await reset_warnings(uid, target_id)
+            # ✅ in‑memory set से हटाएँ
             user_bot.dm_blocked.discard(target_id)
             try:
                 await user_bot.unblock_user(target_id)
@@ -13641,16 +13649,18 @@ async def run_user_bot(session_string, chat_id):
             "freeze", "unfreeze", "stopallspray", "stopall"
         }
 
-        # ─── MENU REGISTRATION ────────────────────────────────────
+        # ─── MENU REGISTRATION (FIXED) ────────────────────────────────────
         @user_bot.on(events.NewMessage(pattern=r'\.(menu\d*[a-z]*)', outgoing=True))
         async def menu_handler(event):
             cmd = event.pattern_match.group(1).strip().lower()
             text = MENU_MAP.get(cmd)
+            # Use `if text is not None` to handle empty strings
             if text is not None:
                 await safe_edit(event, text or "⚠️ This menu is empty.")
             else:
                 await safe_edit(event, f"❌ Menu '{cmd}' not found.")
 
+        # ─── ADD .cmds COMMAND ─────────────────────────────────────────────
         @user_bot.on(events.NewMessage(pattern=r'\.cmds', outgoing=True))
         async def cmd_cmds(event):
             cmd_list = sorted(commands.keys())
@@ -13663,12 +13673,15 @@ async def run_user_bot(session_string, chat_id):
         # ─── STOPALL ────────────────────────────────────────────────────────
         @register_cmd("stopall")
         async def cmd_stopall(event, _):
+            # Stop all sprays
             for chat, task in list(user_bot.spray_tasks.items()):
                 try:
                     task.cancel()
                 except:
                     pass
             user_bot.spray_tasks.clear()
+
+            # Clear all raid sets
             user_bot.reply_users.clear()
             user_bot.rr_users.clear()
             user_bot.flag_users.clear()
@@ -14533,11 +14546,12 @@ async def run_user_bot(session_string, chat_id):
                 user_bot.custom_raid_users.clear()
                 await safe_edit(event, "🛑 All Custom Raids stopped")
 
-        # ─── PWR RAID ──────────────────────────────────────────────────────────
+        # ─── PWR RAID (SEQUENTIAL) ──────────────────────────────────────────
         @register_cmd("pwr", needs_reply=True)
         async def cmd_pwr(event, arg):
             targets = await get_targets(event, arg)
-            if not targets: return
+            if not targets:
+                return
             count = None
             if arg:
                 parts = arg.strip().split()
@@ -14612,7 +14626,7 @@ async def run_user_bot(session_string, chat_id):
                         if target_user and sent % 10 == 0 and await is_protected(target_user, "ows"):
                             await safe_send(chat, "🛑 Target is now protected. Stopping OWS.")
                             break
-                        txt = ows_texts[idx % len(ows_texts)] if ows_texts else "💬 OWS!"
+                        txt = ows_texts[idx % len(ows_texts)]
                         idx += 1
                         sent += 1
                         await safe_send(chat, txt, reply_to=reply_to)
@@ -16768,6 +16782,7 @@ async def run_user_bot(session_string, chat_id):
                         if count > 100: count = 100
                 text_list = premium_raid_texts.get(cmd, [])
                 if not text_list:
+                    await safe_edit(event, f"⚠️ No texts for `{cmd}`. Using default.")
                     text_list = [f"🔥 Premium Raid {cmd}!"]
                 chat = event.chat_id
                 target_user = None
@@ -16844,6 +16859,7 @@ async def run_user_bot(session_string, chat_id):
                         if count > 100: count = 100
                 text_list = premium_spam_texts.get(cmd, [])
                 if not text_list:
+                    await safe_edit(event, f"⚠️ No texts for `{cmd}`. Using default.")
                     text_list = [f"💣 Premium Spam {cmd}!"]
                 chat = event.chat_id
                 target_user = None
@@ -16860,7 +16876,7 @@ async def run_user_bot(session_string, chat_id):
                 if key in user_bot.spray_tasks:
                     await safe_edit(event, "⚠️ Already a spam running in this chat.")
                     return
-                await safe_edit(event, f"💣 Premium Spam `{cmd}` started{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}...")
+                await safe_edit(event, f"💣 Premium Spam `{cmd}` started on target{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}...")
                 async def loop():
                     sent = 0
                     idx = 0
@@ -17623,7 +17639,9 @@ async def run_user_bot(session_string, chat_id):
             sid = event.sender_id
             now = time.time()
 
-            ABUSIVE_WORDS = set()
+            # Abusive words check (empty list)
+            ABUSIVE_WORDS = set()  # empty
+            # Mention detection
             mentions = re.findall(r'@\w+|@\d+', event.text)
             if mentions:
                 if sid not in user_bot.gp_mentions:
@@ -17639,6 +17657,7 @@ async def run_user_bot(session_string, chat_id):
                     await safe_send(cid, f"🛡️ **GP:** Mass mention detected. Action taken on `{sid}`.")
                     user_bot.gp_mentions[sid] = []
 
+            # Duplicate message detection
             if sid not in user_bot.gp_duplicate:
                 user_bot.gp_duplicate[sid] = []
             user_bot.gp_duplicate[sid].append((event.text.lower().strip(), now))
@@ -17652,6 +17671,7 @@ async def run_user_bot(session_string, chat_id):
                 await _gp_take_action(cid, sid, "delete" if action != "delete" else action, auto_mute, mute_min)
                 user_bot.gp_duplicate[sid] = []
 
+            # Flood detection
             if sid not in user_bot.gp_flood:
                 user_bot.gp_flood[sid] = []
             user_bot.gp_flood[sid].append(now)
