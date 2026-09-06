@@ -189,7 +189,6 @@ async def init_db():
                 PRIMARY KEY (user_id, trigger_word)
             )
         """)
-        # ─── NEW: redeem codes table ───
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS redeem_codes (
                 code TEXT PRIMARY KEY,
@@ -402,8 +401,8 @@ MAIN_BOT_CLIENT = TelegramClient(
     "main_bot_session",
     API_ID,
     API_HASH,
-    connection_retries=3,
-    auto_reconnect=False
+    connection_retries=10,
+    auto_reconnect=True
 )
 
 active_userbots = {}
@@ -1098,18 +1097,16 @@ def plan_price_str(plan):
 
 # ─── REDEEM CODE FUNCTIONS ────────────────────────────────────────
 async def generate_redeem_code(amount: float, expiry_days: int, max_uses: Optional[int] = None) -> str:
-    """Generate a unique redeem code."""
     code = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=12))
     expiry = datetime.now() + timedelta(days=expiry_days)
     async with db_pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO redeem_codes (code, amount, expiry_date, max_uses, created_by) VALUES ($1, $2, $3, $4, $5)",
-            code, amount, expiry, max_uses, 0  # created_by will be set by caller
+            code, amount, expiry, max_uses, 0
         )
     return code
 
 async def redeem_code(user_id: int, code: str) -> (bool, str):
-    """Redeem a code for a user. Returns (success, message)."""
     async with db_pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM redeem_codes WHERE code = $1", code)
         if not row:
@@ -1934,24 +1931,27 @@ async def gift_premium(event):
 # ─── USERBOT LAUNCHER WITH RESTART ──────────────────────────────
 async def run_user_bot_with_restart(session_string, chat_id):
     restart_count = 0
+    max_restarts = 10  # एक बार में अधिकतम 10 बार restart
+    backoff = 5  # सेकंड
     last_restart_time = 0
     session_invalid_notified = False
+
     while True:
         try:
             await run_user_bot(session_string, chat_id)
-            break
+            break  # अगर सही से चला तो बाहर
         except FloodWaitError as e:
-            wait = e.seconds + 1
-            print(f"⏳ Userbot flood wait: {wait}s. Sleeping...")
+            wait = e.seconds + 5
+            print(f"⏳ FloodWait: {wait}s for {chat_id}")
             try:
-                await MAIN_BOT_CLIENT.send_message(chat_id, f"⚠️ **Telegram flood limit reached.**\n⏳ Please wait **{wait//60} minutes {wait%60} seconds**.")
-                for owner in MY_OWNER_IDS:
-                    await MAIN_BOT_CLIENT.send_message(owner, f"🔄 **Userbot FloodWait**\nUser: {chat_id}\nWait: {wait}s")
+                await MAIN_BOT_CLIENT.send_message(chat_id, f"⚠️ Flood limit reached. Wait {wait//60}m {wait%60}s.")
             except:
                 pass
             await asyncio.sleep(wait)
-            restart_count = 0
+            restart_count = 0  # flood के बाद restart count reset
             session_invalid_notified = False
+            continue
+
         except (UnauthorizedError, ValueError, RPCError) as e:
             error_msg = str(e)
             if "SESSION_INVALID" in error_msg or "invalid" in error_msg.lower():
@@ -1959,14 +1959,14 @@ async def run_user_bot_with_restart(session_string, chat_id):
                     session_invalid_notified = True
                     try:
                         await MAIN_BOT_CLIENT.send_message(chat_id,
-                            "⚠️ **Your userbot session has expired.**\n\n"
-                            "Please login again using `/login`.\n"
-                            "🛑 This userbot will not restart automatically.")
+                            "⚠️ Session expired. Please login again with /login.\n"
+                            "🛑 This userbot will NOT restart automatically.")
                         for owner in MY_OWNER_IDS:
                             await MAIN_BOT_CLIENT.send_message(owner,
-                                f"🔴 **Userbot Session Invalid**\n👤 User: {chat_id}\n📌 Reason: {error_msg[:100]}")
+                                f"🔴 Session invalid for user {chat_id}")
                     except:
                         pass
+                # Delete session and stop
                 try:
                     if chat_id in active_userbots:
                         await active_userbots[chat_id].disconnect()
@@ -1975,19 +1975,16 @@ async def run_user_bot_with_restart(session_string, chat_id):
                     pass
                 user_sessions.pop(chat_id, None)
                 await delete_session(chat_id)
-                break
+                break  # Stop restart loop
+
         except AuthKeyDuplicatedError as e:
-            print(f"🔴 AuthKeyDuplicatedError for user {chat_id}. Session revoked. Stopping restarts.")
+            # Session used from another place – stop auto-restart
             try:
                 await MAIN_BOT_CLIENT.send_message(chat_id,
-                    "⚠️ **Your session was used from two places simultaneously and has been revoked.**\n"
-                    "Please login again using `/login` in the main bot.\n"
-                    "🛑 This userbot will NOT restart automatically.")
-                for owner in MY_OWNER_IDS:
-                    await MAIN_BOT_CLIENT.send_message(owner,
-                        f"🔴 **AuthKeyDuplicatedError**\n👤 User: {chat_id}\n✅ Restart loop stopped.")
+                    "⚠️ Session used from another device. Please login again.")
             except:
                 pass
+            # Cleanup
             if chat_id in active_userbots:
                 try:
                     await active_userbots[chat_id].disconnect()
@@ -1997,73 +1994,70 @@ async def run_user_bot_with_restart(session_string, chat_id):
             user_sessions.pop(chat_id, None)
             await delete_session(chat_id)
             break
+
         except asyncio.CancelledError:
-            print(f"Userbot restart task cancelled for {chat_id}")
+            print(f"Restart task cancelled for {chat_id}")
             break
+
         except Exception as e:
-            error_msg = str(e)
             now = time.time()
+            # Check if it's a fatal session error
+            error_msg = str(e)
             if "EOF" in error_msg or "input" in error_msg.lower() or "interactive" in error_msg.lower():
-                print(f"🚫 Session invalid (EOF/interactive) for user {chat_id}. Stopping restarts.")
+                # Session invalid – stop
                 try:
-                    await MAIN_BOT_CLIENT.send_message(
-                        chat_id,
-                        "⚠️ **Your userbot session has expired or become invalid!**\n\n"
-                        "Please login again using `/login` in the main bot.\n"
-                        "🛑 This userbot will now stop automatically restarting.")
+                    await MAIN_BOT_CLIENT.send_message(chat_id,
+                        "⚠️ Your session became invalid. Please login again.")
                     for owner in MY_OWNER_IDS:
-                        await MAIN_BOT_CLIENT.send_message(
-                            owner,
-                            f"🚫 **Userbot Session Invalid (EOF/Interactive)**\n"
-                            f"👤 User: {chat_id}\n"
-                            f"📌 Reason: {error_msg[:100]}\n"
-                            f"✅ Restart loop stopped for this user.")
+                        await MAIN_BOT_CLIENT.send_message(owner,
+                            f"🚫 Session invalid (EOF/interactive) for {chat_id}")
                 except:
                     pass
-                try:
-                    if chat_id in active_userbots:
+                if chat_id in active_userbots:
+                    try:
                         await active_userbots[chat_id].disconnect()
-                        del active_userbots[chat_id]
-                except:
-                    pass
+                    except:
+                        pass
+                    del active_userbots[chat_id]
                 user_sessions.pop(chat_id, None)
                 await delete_session(chat_id)
                 break
-            if restart_count >= 5 and (now - last_restart_time) < 60:
-                print(f"⚠️ Too many restarts for user {chat_id} in short time. Waiting...")
-                try:
-                    await MAIN_BOT_CLIENT.send_message(chat_id, f"⚠️ **Userbot is having issues.**\n⏳ Waiting 60 seconds before retry...")
-                except:
-                    pass
-                await asyncio.sleep(60)
-                restart_count = 0
+
+            # Otherwise, handle restarts with backoff
             restart_count += 1
+            if restart_count > max_restarts:
+                print(f"⚠️ Too many restarts ({restart_count}) for {chat_id}. Stopping.")
+                try:
+                    await MAIN_BOT_CLIENT.send_message(chat_id,
+                        "⚠️ Userbot crashing repeatedly. Stopping automatic restarts.\n"
+                        "Please contact owner.")
+                except:
+                    pass
+                break
+
+            wait = min(backoff * (2 ** (restart_count - 1)), 300)  # exponential: 5,10,20,... max 5 min
+            if now - last_restart_time < 60 and restart_count > 3:
+                wait = max(wait, 60)  # at least 1 minute if too many restarts
+
+            print(f"⚠️ Crash: {error_msg[:100]}. Restarting in {wait}s (attempt {restart_count})")
+            try:
+                await MAIN_BOT_CLIENT.send_message(chat_id,
+                    f"⚠️ Userbot crashed. Restarting in {wait}s (attempt {restart_count})")
+            except:
+                pass
+            await asyncio.sleep(wait)
             last_restart_time = now
-            print(f"⚠️ Userbot crashed: {error_msg[:100]}\nRestarting in 5 seconds... (Attempt {restart_count})")
-            if restart_count % 3 == 1:
-                try:
-                    await MAIN_BOT_CLIENT.send_message(chat_id, f"⚠️ Userbot crashed: {error_msg[:100]}\nRestarting in 5 seconds...")
-                except:
-                    pass
-            if restart_count % 5 == 0:
-                try:
-                    for owner in MY_OWNER_IDS:
-                        await MAIN_BOT_CLIENT.send_message(owner,
-                            f"🔄 **Userbot Restart**\n👤 User: {chat_id}\n📌 Reason: {error_msg[:80]}\n🔢 Attempt: {restart_count}")
-                except:
-                    pass
-            await asyncio.sleep(5)
 
 # ─── FULL USERBOT ENGINE ──────────────────────────────────────────
 async def run_user_bot(session_string, chat_id):
     user_bot = None
     try:
-        user_bot = TelegramClient(
+       user_bot = TelegramClient(
             StringSession(session_string),
             API_ID,
             API_HASH,
-            auto_reconnect=False,
-            connection_retries=2
+            auto_reconnect=True,   # False की जगह True
+            connection_retries=10  # 2 की जगह 10
         )
         await user_bot.start()
         active_userbots[chat_id] = user_bot
@@ -2180,8 +2174,7 @@ async def run_user_bot(session_string, chat_id):
             "text": None,
             "chat_id": None,
         }
-
-             # ─── TEXT LISTS ──────────────────────────────────────────────────────
+        # ─── TEXT LISTS ──────────────────────────────────────────────────────
         # ─── PREMIUM RAID TEXT LISTS ──────────────────────────────────────────
         mr_texts = [
         "TTTTTTT🍷EEEEEE💊RRRRR🔘OOOOO🎲BBBBB🤍EEEEEE💊GGGGGG🖤EEEEEE💊JJJJJJ👅 CCCCCC⚔️OOOOO🎲DDDDD👿UUUUU💣",
@@ -13251,7 +13244,7 @@ async def run_user_bot(session_string, chat_id):
         "Maa",
         "Ke"
         ]
-        # ─── NC PATTERNS ────────────────────────────────────────────────────
+              # ─── NC PATTERNS ────────────────────────────────────────────────────
         HINDINC_PATTERNS = [
             "{text} चुडाकड़ ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
             "{text} रैंडी ˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
@@ -13327,24 +13320,7 @@ async def run_user_bot(session_string, chat_id):
         ]
 
         EMOJI_NC_EMOJIS = ["🐧","🦭","🦈","🫍","🐬","🐋","🐳","🐟","🐠","🐡","🦐","🦞","🦀","🦑","🐙","🪼","🦪","🪸","🫧","🦂"]
-        EMOJI_NC_PATTERN = "{text} <⋆.ೃ࿔*:･{emoji}⋆.ೃ࿔*:･>"
-
-        # ─── TEXT LISTS ──────────────────────────────────────────────────────
-        # (All lists are empty as per request)
-
-        # Store all premium raid and spam texts in dicts for easy lookup
-        premium_raid_texts = {
-            "mr": mr_texts, "mr2": mr2_texts, "br": br_texts, "br2": br2_texts, "br3": br3_texts,
-            "sqr": sqr_texts, "sq2": sq2_texts, "cr": cr_texts, "bar": bar_texts, "gr": gr_texts
-        }
-        premium_spam_texts = {
-            "ms": ms_texts, "ms2": ms2_texts, "bs": bs_texts, "bs2": bs2_texts, "bs3": bs3_texts,
-            "sqs": sqs_texts, "sqs2": sqs2_texts, "cs": cs_texts, "bas": bas_texts, "gs": gs_texts
-        }
-
-        # ─── ABUSIVE WORDS FOR GODPROTECTION ──────────────────────────────
-        ABUSIVE_WORDS = {"mc", "bsdk", "rndi", "randi", "chod", "chud", "bhosdi", "bhosda", "madarchod", "motherfucker", "fuck", "gand", "lund", "chut", "fuddi", "bhenchod"}
-
+        EMOJI_NC_PATTERN = "{text} <⋆.ೃ࿔*:･{emoji}⋆.ೃ࿔*:･>
         # ─── LOAD/SAVE FUNCTIONS ─────────────────────────────────────────────
         def load_admins():
             try:
@@ -13664,13 +13640,26 @@ async def run_user_bot(session_string, chat_id):
             "freeze", "unfreeze", "stopallspray", "stopall"
         }
 
-        # ─── MENU REGISTRATION ────────────────────────────────────────────
+        # ─── MENU REGISTRATION (FIXED) ────────────────────────────────────
         @user_bot.on(events.NewMessage(pattern=r'\.(menu\d*[a-z]*)', outgoing=True))
         async def menu_handler(event):
             cmd = event.pattern_match.group(1).strip().lower()
             text = MENU_MAP.get(cmd)
-            if text:
-                await safe_edit(event, text)
+            # Use `if text is not None` to handle empty strings
+            if text is not None:
+                await safe_edit(event, text or "⚠️ This menu is empty.")
+            else:
+                await safe_edit(event, f"❌ Menu '{cmd}' not found.")
+
+        # ─── ADD .cmds COMMAND ─────────────────────────────────────────────
+        @user_bot.on(events.NewMessage(pattern=r'\.cmds', outgoing=True))
+        async def cmd_cmds(event):
+            cmd_list = sorted(commands.keys())
+            if not cmd_list:
+                await safe_edit(event, "📭 No commands registered.")
+                return
+            msg = "📋 **Available Commands:**\n" + "\n".join(f"• .{c}" for c in cmd_list)
+            await safe_edit(event, msg)
 
         # ─── STOPALL ────────────────────────────────────────────────────────
         @register_cmd("stopall")
@@ -13881,7 +13870,6 @@ async def run_user_bot(session_string, chat_id):
             except:
                 pass
             msg = await user_bot.send_message(event.chat_id, "✍️ ")
-            # Increase speed: reduce sleep range
             for i in range(1, len(stylish_text) + 1):
                 current_text = f"{stylish_text[:i]}"
                 try:
@@ -13947,7 +13935,7 @@ async def run_user_bot(session_string, chat_id):
             "mock": lambda s: ''.join(c.upper() if i%2 else c.lower() for i,c in enumerate(s)),
             "spaceit": lambda s: ' '.join(s),
             "removespaces": lambda s: ''.join(s.split()),
-            "clap": lambda s: ' '.join(s.split()),  # removed emoji
+            "clap": lambda s: ' '.join(s.split()),
             "mirror": lambda s: s + s[::-1],
             "flip_text": lambda s: s[::-1].translate(str.maketrans("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "ɐqɔpǝɟɓɥıɾʞlɯuodbɹsʇnʌʍxʎz∀BƆDƎℲ⅁HIſʞLMNOԀQɹS┴∩ΛMX⅄Z")),
         }
@@ -16762,9 +16750,7 @@ async def run_user_bot(session_string, chat_id):
             else:
                 await safe_edit(event, "⚠️ No active raid for these users")
 
-        # ─── PREMIUM RAID START/STOP (now use spray_tasks) ──────────────────
-        # We'll modify these to start a spray loop similar to deathgod.
-        # We'll use a dict to store tasks for premium raids.
+        # ─── PREMIUM RAID START/STOP ──────────────────────────────────
         premium_raid_tasks = {}
         premium_spam_tasks = {}
 
@@ -16829,7 +16815,7 @@ async def run_user_bot(session_string, chat_id):
                         if sent > 0:
                             await safe_send(chat, f"✅ Premium Raid `{cmd}` done: {sent} messages sent.")
                 user_bot.spray_tasks[key] = asyncio.create_task(loop())
-                await safe_edit(event, f"⚔️ Premium Raid `{cmd}` started.")  # update status
+                await safe_edit(event, f"⚔️ Premium Raid `{cmd}` started.")
 
             @register_cmd(stop_cmd, premium=True)
             async def stop_premium_raid(event, arg, cmd=start_cmd):
@@ -17509,7 +17495,7 @@ async def run_user_bot(session_string, chat_id):
             save_autoreply("")
             await safe_edit(event, "🗑️ Auto-reply removed.")
 
-        # ─── GODPROTECTION (improved with abusive words) ──────────────────
+        # ─── GODPROTECTION ──────────────────────────────────────────────────────
         @register_cmd("godprotection")
         async def cmd_godprotection(event, arg):
             if not is_admin(event.sender_id):
@@ -17593,7 +17579,7 @@ async def run_user_bot(session_string, chat_id):
             except Exception as e:
                 await safe_edit(event, f"❌ DB error: {e}")
 
-        # ─── GOD PROTECTION AUTO HANDLER (with abusive words) ─────────────
+        # ─── GOD PROTECTION AUTO HANDLER ─────────────────────────────
         async def _gp_take_action(cid, uid, action, auto_mute=False, mute_min=5):
             try:
                 if action == "delete":
@@ -17644,17 +17630,8 @@ async def run_user_bot(session_string, chat_id):
             sid = event.sender_id
             now = time.time()
 
-            # Check for abusive words
-            msg_text = event.raw_text.lower()
-            if any(word in msg_text for word in ABUSIVE_WORDS):
-                try:
-                    await event.delete()
-                except:
-                    pass
-                await _gp_take_action(cid, sid, "delete" if action != "delete" else action, auto_mute, mute_min)
-                await safe_send(cid, f"🛡️ **GP:** Abusive language detected. Action taken on `{sid}`.")
-                return
-
+            # Abusive words check (empty list)
+            ABUSIVE_WORDS = set()  # empty
             # Mention detection
             mentions = re.findall(r'@\w+|@\d+', event.text)
             if mentions:
@@ -18333,8 +18310,6 @@ async def run_user_bot(session_string, chat_id):
                 await safe_send(chat, random.choice(doom_texts) if doom_texts else "💀 Doom!", reply_to=event.id)
                 user_bot.reply_cooldowns[sender] = now
                 return
-
-            # Premium raids and spams are now handled via spray_tasks, not here.
 
         # ─── CACHE & ANTI-DELETE ──────────────────────────────────────────────
         @user_bot.on(events.NewMessage(outgoing=True))
