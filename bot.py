@@ -45,7 +45,6 @@ REQUIRED_CHANNELS = [
     {"id": -1004334756214, "invite": "https://t.me/+5DvNxDnfAApjYWNk", "name": "Channel 2"},
     {"id": -1004452969098, "invite": "https://t.me/+A1qEdXj8ZUI5ZGM1", "name": "Channel 3"},
     {"id": -1004331434090, "invite": "https://t.me/+Wkmu7JUvlrBkZTI1", "name": "Channel 4"},
-    {"id": -1004331557651, "invite": "https://t.me/+nOmFPUNhI6Q3MGQ1", "name": "Channel 5"},
 ]
 
 USERS_FILE = "broadcast_users.json"
@@ -187,17 +186,6 @@ async def init_db():
                 reply_type TEXT DEFAULT 'text',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (user_id, trigger_word)
-            )
-        """)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS redeem_codes (
-                code TEXT PRIMARY KEY,
-                amount DECIMAL(10,2) NOT NULL,
-                expiry_date TIMESTAMP,
-                max_uses INTEGER,
-                used_count INTEGER DEFAULT 0,
-                created_by BIGINT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -401,8 +389,8 @@ MAIN_BOT_CLIENT = TelegramClient(
     "main_bot_session",
     API_ID,
     API_HASH,
-    connection_retries=10,
-    auto_reconnect=True
+    connection_retries=3,
+    auto_reconnect=False
 )
 
 active_userbots = {}
@@ -1095,34 +1083,6 @@ def plan_price(plan):
 def plan_price_str(plan):
     return f"₹{plan_price(plan)}"
 
-# ─── REDEEM CODE FUNCTIONS ────────────────────────────────────────
-async def generate_redeem_code(amount: float, expiry_days: int, max_uses: Optional[int] = None) -> str:
-    code = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=12))
-    expiry = datetime.now() + timedelta(days=expiry_days)
-    async with db_pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO redeem_codes (code, amount, expiry_date, max_uses, created_by) VALUES ($1, $2, $3, $4, $5)",
-            code, amount, expiry, max_uses, 0
-        )
-    return code
-
-async def redeem_code(user_id: int, code: str) -> (bool, str):
-    async with db_pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT * FROM redeem_codes WHERE code = $1", code)
-        if not row:
-            return False, "❌ Invalid code."
-        if row['expiry_date'] and row['expiry_date'] < datetime.now():
-            return False, "❌ Code has expired."
-        if row['max_uses'] is not None and row['used_count'] >= row['max_uses']:
-            return False, "❌ Code has been fully redeemed."
-        amount = float(row['amount'])
-        await conn.execute(
-            "UPDATE redeem_codes SET used_count = used_count + 1 WHERE code = $1",
-            code
-        )
-        await add_balance(user_id, amount)
-        return True, f"✅ Successfully redeemed ₹{amount:.2f}!"
-
 # ─── MAIN HANDLERS ─────────────────────────────────────────────────
 @MAIN_BOT_CLIENT.on(events.NewMessage(pattern="/start"))
 async def start_handler(event):
@@ -1132,7 +1092,6 @@ async def start_handler(event):
     buttons = [
         [types.KeyboardButtonCallback("💎 Buy Premium", data="buy_menu")],
         [types.KeyboardButtonCallback("💰 Deposit / Check Balance", data="deposit")],
-        [types.KeyboardButtonCallback("🎟️ Redeem Code", data="redeem_prompt")],
         [types.KeyboardButtonUrl("🔗 Premium Features", url=PREMIUM_FEATURES_LINK)],
     ]
     bal = await get_balance(user_id)
@@ -1614,13 +1573,6 @@ async def callback_handler(event):
             await MAIN_BOT_CLIENT.send_message(uid, f"💔 {sender} asked for divorce but you said NO.")
         except:
             await event.edit("❌ Something went wrong.")
-    elif data == "redeem_prompt":
-        user_id = event.sender_id
-        if event.chat_id != user_id:
-            await event.answer("Please use this in private chat.", alert=True)
-            return
-        await event.edit("🎟️ **Redeem Code**\n\nPlease send the redeem code you have.\nFormat: `/redeem <code>`")
-        await event.answer("Use /redeem <code>")
     else:
         await event.answer("Unknown action.")
 
@@ -1661,41 +1613,6 @@ async def deposit_cmd(event):
         await event.reply(caption + "\n\n⚠️ QR image not found. Please contact owner.", buttons=buttons)
         print(f"Deposit QR send error: {e}")
     user_states[user_id] = {"step": "waiting_deposit"}
-
-@MAIN_BOT_CLIENT.on(events.NewMessage(pattern="/redeem"))
-async def redeem_cmd(event):
-    if not event.is_private:
-        return
-    user_id = event.sender_id
-    args = event.text.strip().split()
-    if len(args) != 2:
-        await safe_reply(event, "❌ Usage: /redeem <code>")
-        return
-    code = args[1].strip().upper()
-    success, msg = await redeem_code(user_id, code)
-    await safe_reply(event, msg)
-
-@MAIN_BOT_CLIENT.on(events.NewMessage(pattern="/gencode"))
-async def gencode_cmd(event):
-    if event.sender_id not in MY_OWNER_IDS:
-        return
-    args = event.text.strip().split()
-    if len(args) < 3:
-        await safe_reply(event, "❌ Usage: /gencode <amount> <expiry_days> [max_uses]")
-        return
-    try:
-        amount = float(args[1])
-        expiry_days = int(args[2])
-        max_uses = None
-        if len(args) >= 4:
-            max_uses = int(args[3])
-            if max_uses <= 0:
-                max_uses = None
-    except ValueError:
-        await safe_reply(event, "❌ Invalid arguments. Use: /gencode <amount> <expiry_days> [max_uses]")
-        return
-    code = await generate_redeem_code(amount, expiry_days, max_uses)
-    await safe_reply(event, f"✅ **Redeem Code Generated**\n\nCode: `{code}`\nAmount: ₹{amount:.2f}\nExpires in {expiry_days} days\nMax uses: {'Unlimited' if max_uses is None else max_uses}\n\nShare this code with users to redeem.")
 
 @MAIN_BOT_CLIENT.on(events.NewMessage)
 async def payment_handler(event):
@@ -1931,27 +1848,24 @@ async def gift_premium(event):
 # ─── USERBOT LAUNCHER WITH RESTART ──────────────────────────────
 async def run_user_bot_with_restart(session_string, chat_id):
     restart_count = 0
-    max_restarts = 10  # एक बार में अधिकतम 10 बार restart
-    backoff = 5  # सेकंड
     last_restart_time = 0
     session_invalid_notified = False
-
     while True:
         try:
             await run_user_bot(session_string, chat_id)
-            break  # अगर सही से चला तो बाहर
+            break
         except FloodWaitError as e:
-            wait = e.seconds + 5
-            print(f"⏳ FloodWait: {wait}s for {chat_id}")
+            wait = e.seconds + 1
+            print(f"⏳ Userbot flood wait: {wait}s. Sleeping...")
             try:
-                await MAIN_BOT_CLIENT.send_message(chat_id, f"⚠️ Flood limit reached. Wait {wait//60}m {wait%60}s.")
+                await MAIN_BOT_CLIENT.send_message(chat_id, f"⚠️ **Telegram flood limit reached.**\n⏳ Please wait **{wait//60} minutes {wait%60} seconds**.")
+                for owner in MY_OWNER_IDS:
+                    await MAIN_BOT_CLIENT.send_message(owner, f"🔄 **Userbot FloodWait**\nUser: {chat_id}\nWait: {wait}s")
             except:
                 pass
             await asyncio.sleep(wait)
-            restart_count = 0  # flood के बाद restart count reset
+            restart_count = 0
             session_invalid_notified = False
-            continue
-
         except (UnauthorizedError, ValueError, RPCError) as e:
             error_msg = str(e)
             if "SESSION_INVALID" in error_msg or "invalid" in error_msg.lower():
@@ -1959,14 +1873,14 @@ async def run_user_bot_with_restart(session_string, chat_id):
                     session_invalid_notified = True
                     try:
                         await MAIN_BOT_CLIENT.send_message(chat_id,
-                            "⚠️ Session expired. Please login again with /login.\n"
-                            "🛑 This userbot will NOT restart automatically.")
+                            "⚠️ **Your userbot session has expired.**\n\n"
+                            "Please login again using `/login`.\n"
+                            "🛑 This userbot will not restart automatically.")
                         for owner in MY_OWNER_IDS:
                             await MAIN_BOT_CLIENT.send_message(owner,
-                                f"🔴 Session invalid for user {chat_id}")
+                                f"🔴 **Userbot Session Invalid**\n👤 User: {chat_id}\n📌 Reason: {error_msg[:100]}")
                     except:
                         pass
-                # Delete session and stop
                 try:
                     if chat_id in active_userbots:
                         await active_userbots[chat_id].disconnect()
@@ -1975,16 +1889,19 @@ async def run_user_bot_with_restart(session_string, chat_id):
                     pass
                 user_sessions.pop(chat_id, None)
                 await delete_session(chat_id)
-                break  # Stop restart loop
-
+                break
         except AuthKeyDuplicatedError as e:
-            # Session used from another place – stop auto-restart
+            print(f"🔴 AuthKeyDuplicatedError for user {chat_id}. Session revoked. Stopping restarts.")
             try:
                 await MAIN_BOT_CLIENT.send_message(chat_id,
-                    "⚠️ Session used from another device. Please login again.")
+                    "⚠️ **Your session was used from two places simultaneously and has been revoked.**\n"
+                    "Please login again using `/login` in the main bot.\n"
+                    "🛑 This userbot will NOT restart automatically.")
+                for owner in MY_OWNER_IDS:
+                    await MAIN_BOT_CLIENT.send_message(owner,
+                        f"🔴 **AuthKeyDuplicatedError**\n👤 User: {chat_id}\n✅ Restart loop stopped.")
             except:
                 pass
-            # Cleanup
             if chat_id in active_userbots:
                 try:
                     await active_userbots[chat_id].disconnect()
@@ -1994,59 +1911,62 @@ async def run_user_bot_with_restart(session_string, chat_id):
             user_sessions.pop(chat_id, None)
             await delete_session(chat_id)
             break
-
         except asyncio.CancelledError:
-            print(f"Restart task cancelled for {chat_id}")
+            print(f"Userbot restart task cancelled for {chat_id}")
             break
-
         except Exception as e:
-            now = time.time()
-            # Check if it's a fatal session error
             error_msg = str(e)
+            now = time.time()
             if "EOF" in error_msg or "input" in error_msg.lower() or "interactive" in error_msg.lower():
-                # Session invalid – stop
+                print(f"🚫 Session invalid (EOF/interactive) for user {chat_id}. Stopping restarts.")
                 try:
-                    await MAIN_BOT_CLIENT.send_message(chat_id,
-                        "⚠️ Your session became invalid. Please login again.")
+                    await MAIN_BOT_CLIENT.send_message(
+                        chat_id,
+                        "⚠️ **Your userbot session has expired or become invalid!**\n\n"
+                        "Please login again using `/login` in the main bot.\n"
+                        "🛑 This userbot will now stop automatically restarting.")
                     for owner in MY_OWNER_IDS:
-                        await MAIN_BOT_CLIENT.send_message(owner,
-                            f"🚫 Session invalid (EOF/interactive) for {chat_id}")
+                        await MAIN_BOT_CLIENT.send_message(
+                            owner,
+                            f"🚫 **Userbot Session Invalid (EOF/Interactive)**\n"
+                            f"👤 User: {chat_id}\n"
+                            f"📌 Reason: {error_msg[:100]}\n"
+                            f"✅ Restart loop stopped for this user.")
                 except:
                     pass
-                if chat_id in active_userbots:
-                    try:
+                try:
+                    if chat_id in active_userbots:
                         await active_userbots[chat_id].disconnect()
-                    except:
-                        pass
-                    del active_userbots[chat_id]
+                        del active_userbots[chat_id]
+                except:
+                    pass
                 user_sessions.pop(chat_id, None)
                 await delete_session(chat_id)
                 break
-
-            # Otherwise, handle restarts with backoff
-            restart_count += 1
-            if restart_count > max_restarts:
-                print(f"⚠️ Too many restarts ({restart_count}) for {chat_id}. Stopping.")
+            if restart_count >= 5 and (now - last_restart_time) < 60:
+                print(f"⚠️ Too many restarts for user {chat_id} in short time. Waiting...")
                 try:
-                    await MAIN_BOT_CLIENT.send_message(chat_id,
-                        "⚠️ Userbot crashing repeatedly. Stopping automatic restarts.\n"
-                        "Please contact owner.")
+                    await MAIN_BOT_CLIENT.send_message(chat_id, f"⚠️ **Userbot is having issues.**\n⏳ Waiting 60 seconds before retry...")
                 except:
                     pass
-                break
-
-            wait = min(backoff * (2 ** (restart_count - 1)), 300)  # exponential: 5,10,20,... max 5 min
-            if now - last_restart_time < 60 and restart_count > 3:
-                wait = max(wait, 60)  # at least 1 minute if too many restarts
-
-            print(f"⚠️ Crash: {error_msg[:100]}. Restarting in {wait}s (attempt {restart_count})")
-            try:
-                await MAIN_BOT_CLIENT.send_message(chat_id,
-                    f"⚠️ Userbot crashed. Restarting in {wait}s (attempt {restart_count})")
-            except:
-                pass
-            await asyncio.sleep(wait)
+                await asyncio.sleep(60)
+                restart_count = 0
+            restart_count += 1
             last_restart_time = now
+            print(f"⚠️ Userbot crashed: {error_msg[:100]}\nRestarting in 5 seconds... (Attempt {restart_count})")
+            if restart_count % 3 == 1:
+                try:
+                    await MAIN_BOT_CLIENT.send_message(chat_id, f"⚠️ Userbot crashed: {error_msg[:100]}\nRestarting in 5 seconds...")
+                except:
+                    pass
+            if restart_count % 5 == 0:
+                try:
+                    for owner in MY_OWNER_IDS:
+                        await MAIN_BOT_CLIENT.send_message(owner,
+                            f"🔄 **Userbot Restart**\n👤 User: {chat_id}\n📌 Reason: {error_msg[:80]}\n🔢 Attempt: {restart_count}")
+                except:
+                    pass
+            await asyncio.sleep(5)
 
 # ─── FULL USERBOT ENGINE ──────────────────────────────────────────
 async def run_user_bot(session_string, chat_id):
@@ -2056,8 +1976,8 @@ async def run_user_bot(session_string, chat_id):
             StringSession(session_string),
             API_ID,
             API_HASH,
-            auto_reconnect=True,
-            connection_retries=10
+            auto_reconnect=False,
+            connection_retries=2
         )
         await user_bot.start()
         active_userbots[chat_id] = user_bot
@@ -2174,6 +2094,86 @@ async def run_user_bot(session_string, chat_id):
             "text": None,
             "chat_id": None,
         }
+
+       
+        # ─── NC PATTERNS ────────────────────────────────────────────────────
+        HINDINC_PATTERNS = [
+            "{text} चुडाकड़ ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} रैंडी ˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} गरीब ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} चमार˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} भेंगे⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} रैंडी के बच्चे˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} गुलाम⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} गुलामी कर˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} चुदाई केंद्र⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} नांगा नाच कर˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} पापा बोल Mere को⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} तेरी मां नंगी करू˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+            "{text} छक्के⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
+            "{text} भोसड़ी के˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
+        ]
+
+        URDU_PATTERNS = [
+            "{text} ٹی ایم کے بی࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
+            "{text} ٹی ایم کے سی𓍢ִႋ🌷͙֒ᰔᩚ",
+            "{text} تیری ماں رندی࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
+            "{text} چوداکڑ 𓍢ִႋ🌷͙֒ᰔᩚ",
+            "{text} گلام ࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
+            "{text} رنڈی𓍢ִႋ🌷͙֒ᰔᩚ",
+            "{text} تیری ماں چھوڑ کر فیک دو ࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
+            "{text} گلامی کے آر𓍢ִႋ🌷͙֒ᰔᩚ",
+            "{text} عجیب کو باپ بول࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
+            "{text} رنڈی پوترا 𓍢ִႋ🌷͙֒ᰔᩚ",
+            "{text} چکے ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.",
+            "{text} بی ٹی ایس کے لنڈ 𓍢ִႋ🌷͙֒ᰔᩚ",
+        ]
+
+        BENGALI_PATTERNS = [
+            "{text} শালা °❀.ೃ࿔*ꫂ❁",
+            "{text} এলোমেলো ꫂ❁°❀.ೃ࿔*",
+            "{text} গরিবꫂ❁°❀.ೃ࿔*",
+            "{text} ককার ꫂ❁°❀.ೃ࿔*",
+            "{text} প্রজাতিꫂ❁°❀.ೃ࿔*",
+            "{text} এক এলোমেলোর সন্তানꫂ❁°❀.ೃ࿔*",
+            "{text} দাসꫂ❁°❀.ೃ࿔*",
+            "{text} শালা কেন্দ্রꫂ❁°❀.ೃ࿔*",
+            "{text} নগ্নꫂ❁°❀.ೃ࿔*",
+            "{text} বাবা, আমাকে বল, আমি ꫂ❁°❀.ೃ࿔*",
+            "{text} তোর মাকে বিবস্ত্র করব।ꫂ❁°❀.ೃ࿔*",
+            "{text} সিক্সার্সꫂ❁°❀.ೃ࿔*",
+            "{text} তুই হারামজাদাꫂ❁°❀.ೃ࿔*",
+        ]
+
+        BIHARI_PATTERNS = [
+            "{text} भोसड़ी के बा⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} सतमेरवनी₊˚ʚ ᗢ₊˚✧ ﾟ.",
+            "{text} गरीब⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} कॉकर के ह₊˚ʚ ᗢ₊˚✧ ﾟ.",
+            "{text} नसल⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} एगो बेतरतीब के लइका₊˚ʚ ᗢ₊˚✧ ﾟ.",
+            "{text} गुलाम⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} कमबख्त सेंटर के बा₊˚ʚ ᗢ₊˚✧ ﾟ.",
+            "{text} नंगा हो गइल बा⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} पापा बताव हम तोहार माई के {text} उतार देब।₊˚ʚ ᗢ₊˚✧ ﾟ.",
+            "{text} छक्का के लोग⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
+            "{text} रे हरामी₊˚ʚ ᗢ₊˚✧ ﾟ.",
+        ]
+
+        ENGLISH_PATTERNS = [
+            "{text} 🅱🅻🅾🅾🅳🆈 🅷🅴🅻🅻.𖥔 ݁ ˖ִ🛸༄˖°.",
+            "{text} 🅼🅾🆃🅷🅴🆁🅵🆄🅲🅺🅴🆁🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
+            "{text} 🅱🅸🆃🅲🅷 🆂🅾🅽.𖥔 ݁ ˖ִ🛸༄˖°.",
+            "{text} 🆂🅻🅰🆅🅴🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
+            "{text} 🆂🅾🅽 🅾🅵 🅼🅸🅰 🅺🅷🅰🅻🅸🅵🅰 .𖥔 ݁ ˖ִ🛸༄˖°.",
+            "{text} 🆂🅰🆈 🅵🆁🅴🅰🅺🆈 🅳🅰🅳🅳🆈🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
+            "{text} 🅵🆄🅲🅺🄽🄶 🅲🅴🅽🆃🆁🅴.𖥔 ݁ ˖ִ🛸༄˖°.",
+            "{text} 🆂🅾🅽 🅵🆄🅲🅺🅴🅳 🅼🅾🅼🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
+        ]
+
+        EMOJI_NC_EMOJIS = ["🐧","🦭","🦈","🫍","🐬","🐋","🐳","🐟","🐠","🐡","🦐","🦞","🦀","🦑","🐙","🪼","🦪","🪸","🫧","🦂"]
+        EMOJI_NC_PATTERN = "{text} <⋆.ೃ࿔*:･{emoji}⋆.ೃ࿔*:･>"
+
         # ─── TEXT LISTS ──────────────────────────────────────────────────────
         # ─── PREMIUM RAID TEXT LISTS ──────────────────────────────────────────
         mr_texts = [
@@ -13244,84 +13244,6 @@ async def run_user_bot(session_string, chat_id):
         "Maa",
         "Ke"
         ]
-              # ─── NC PATTERNS ────────────────────────────────────────────────────
-        HINDINC_PATTERNS = [
-            "{text} चुडाकड़ ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} रैंडी ˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} गरीब ⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} चमार˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} भेंगे⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} रैंडी के बच्चे˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} गुलाम⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} गुलामी कर˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} चुदाई केंद्र⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} नांगा नाच कर˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} पापा बोल Mere को⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} तेरी मां नंगी करू˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-            "{text} छक्के⊹ ࣪ ﹏𓊝﹏𓂁﹏⊹ ࣪ ˖",
-            "{text} भोसड़ी के˖ ࣪ ꉂ🗯˙🫐⃟.꩜‹—",
-        ]
-
-        URDU_PATTERNS = [
-            "{text} ٹی ایم کے بی࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
-            "{text} ٹی ایم کے سی𓍢ִႋ🌷͙֒ᰔᩚ",
-            "{text} تیری ماں رندی࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
-            "{text} چوداکڑ 𓍢ִႋ🌷͙֒ᰔᩚ",
-            "{text} گلام ࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
-            "{text} رنڈی𓍢ִႋ🌷͙֒ᰔᩚ",
-            "{text} تیری ماں چھوڑ کر فیک دو ࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
-            "{text} گلامی کے آر𓍢ִႋ🌷͙֒ᰔᩚ",
-            "{text} عجیب کو باپ بول࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐",
-            "{text} رنڈی پوترا 𓍢ִႋ🌷͙֒ᰔᩚ",
-            "{text} چکے ִ ࣪𖤐࣪ ִֶָ☾.ִ ࣪𖤐࣪ ִֶָ☾.",
-            "{text} بی ٹی ایس کے لنڈ 𓍢ִႋ🌷͙֒ᰔᩚ",
-        ]
-
-        BENGALI_PATTERNS = [
-            "{text} শালা °❀.ೃ࿔*ꫂ❁",
-            "{text} এলোমেলো ꫂ❁°❀.ೃ࿔*",
-            "{text} গরিবꫂ❁°❀.ೃ࿔*",
-            "{text} ককার ꫂ❁°❀.ೃ࿔*",
-            "{text} প্রজাতিꫂ❁°❀.ೃ࿔*",
-            "{text} এক এলোমেলোর সন্তানꫂ❁°❀.ೃ࿔*",
-            "{text} দাসꫂ❁°❀.ೃ࿔*",
-            "{text} শালা কেন্দ্রꫂ❁°❀.ೃ࿔*",
-            "{text} নগ্নꫂ❁°❀.ೃ࿔*",
-            "{text} বাবা, আমাকে বল, আমি ꫂ❁°❀.ೃ࿔*",
-            "{text} তোর মাকে বিবস্ত্র করব।ꫂ❁°❀.ೃ࿔*",
-            "{text} সিক্সার্সꫂ❁°❀.ೃ࿔*",
-            "{text} তুই হারামজাদাꫂ❁°❀.ೃ࿔*",
-        ]
-
-        BIHARI_PATTERNS = [
-            "{text} भोसड़ी के बा⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} सतमेरवनी₊˚ʚ ᗢ₊˚✧ ﾟ.",
-            "{text} गरीब⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} कॉकर के ह₊˚ʚ ᗢ₊˚✧ ﾟ.",
-            "{text} नसल⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} एगो बेतरतीब के लइका₊˚ʚ ᗢ₊˚✧ ﾟ.",
-            "{text} गुलाम⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} कमबख्त सेंटर के बा₊˚ʚ ᗢ₊˚✧ ﾟ.",
-            "{text} नंगा हो गइल बा⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} पापा बताव हम तोहार माई के {text} उतार देब।₊˚ʚ ᗢ₊˚✧ ﾟ.",
-            "{text} छक्का के लोग⋆꙳^̩̩͙❅*̩̩͙‧͙ ‧͙*̩̩͙❆ ͙͛ ˚₊⋆",
-            "{text} रे हरामी₊˚ʚ ᗢ₊˚✧ ﾟ.",
-        ]
-
-        ENGLISH_PATTERNS = [
-            "{text} 🅱🅻🅾🅾🅳🆈 🅷🅴🅻🅻.𖥔 ݁ ˖ִ🛸༄˖°.",
-            "{text} 🅼🅾🆃🅷🅴🆁🅵🆄🅲🅺🅴🆁🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
-            "{text} 🅱🅸🆃🅲🅷 🆂🅾🅽.𖥔 ݁ ˖ִ🛸༄˖°.",
-            "{text} 🆂🅻🅰🆅🅴🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
-            "{text} 🆂🅾🅽 🅾🅵 🅼🅸🅰 🅺🅷🅰🅻🅸🅵🅰 .𖥔 ݁ ˖ִ🛸༄˖°.",
-            "{text} 🆂🅰🆈 🅵🆁🅴🅰🅺🆈 🅳🅰🅳🅳🆈🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
-            "{text} 🅵🆄🅲🅺🄽🄶 🅲🅴🅽🆃🆁🅴.𖥔 ݁ ˖ִ🛸༄˖°.",
-            "{text} 🆂🅾🅽 🅵🆄🅲🅺🅴🅳 🅼🅾🅼🌊⋆｡ 𖦹°.🐚⋆❀˖°🫧",
-        ]
-
-        EMOJI_NC_EMOJIS = ["🐧","🦭","🦈","🫍","🐬","🐋","🐳","🐟","🐠","🐡","🦐","🦞","🦀","🦑","🐙","🪼","🦪","🪸","🫧","🦂"]
-        EMOJI_NC_PATTERN = "{text} <⋆.ೃ࿔*:･{emoji}⋆.ೃ࿔*:･>"        
-        
         # ─── LOAD/SAVE FUNCTIONS ─────────────────────────────────────────────
         def load_admins():
             try:
@@ -13484,7 +13406,7 @@ async def run_user_bot(session_string, chat_id):
         user_bot.user_filters = await load_user_filters(me.id)
         user_bot.filter_reply_ids = set()
 
-       # ─── DM SHIELD FUNCTIONS ──────────────────────────────────────
+        # ─── DM SHIELD FUNCTIONS ──────────────────────────────────────
         async def get_warnings(uid: int, target_id: int) -> int:
             async with db_pool.acquire() as conn:
                 row = await conn.fetchrow(
@@ -13515,16 +13437,12 @@ async def run_user_bot(session_string, chat_id):
                 )
 
         async def is_blocked(uid: int, target_id: int) -> bool:
-            # पहले in‑memory set में देखें (तेज़)
-            if target_id in user_bot.dm_blocked:
-                return True
-            # फिर DB से verify (अगर किसी वजह से set update न हुआ हो)
             async with db_pool.acquire() as conn:
                 row = await conn.fetchrow(
                     "SELECT 1 FROM dm_blocked WHERE user_id = $1 AND blocked_id = $2",
                     uid, target_id
                 )
-            return row is not None
+                return row is not None
 
         async def block_user(uid: int, target_id: int):
             async with db_pool.acquire() as conn:
@@ -13533,12 +13451,10 @@ async def run_user_bot(session_string, chat_id):
                     uid, target_id
                 )
                 await reset_warnings(uid, target_id)
-            # ✅ in‑memory set को भी update करें
-            user_bot.dm_blocked.add(target_id)
-            try:
-                await user_bot.block_user(target_id)
-            except Exception as e:
-                print(f"Block error: {e}")
+                try:
+                    await user_bot.block_user(target_id)
+                except Exception as e:
+                    print(f"Block error: {e}")
 
         async def unblock_user(uid: int, target_id: int):
             async with db_pool.acquire() as conn:
@@ -13547,12 +13463,10 @@ async def run_user_bot(session_string, chat_id):
                     uid, target_id
                 )
                 await reset_warnings(uid, target_id)
-            # ✅ in‑memory set से हटाएँ
-            user_bot.dm_blocked.discard(target_id)
-            try:
-                await user_bot.unblock_user(target_id)
-            except Exception as e:
-                print(f"Unblock error: {e}")
+                try:
+                    await user_bot.unblock_user(target_id)
+                except Exception as e:
+                    print(f"Unblock error: {e}")
 
         # ─── HELPER FUNCTIONS ──────────────────────────────────────────
         async def is_premium_user(uid: int) -> bool:
@@ -13649,26 +13563,14 @@ async def run_user_bot(session_string, chat_id):
             "freeze", "unfreeze", "stopallspray", "stopall"
         }
 
-        # ─── MENU REGISTRATION (FIXED) ────────────────────────────────────
+        # ─── MENU REGISTRATION ────────────────────────────────────────────
+               # ─── MENU HANDLER ────────────────────────────────────────────────
         @user_bot.on(events.NewMessage(pattern=r'\.(menu\d*[a-z]*)', outgoing=True))
         async def menu_handler(event):
             cmd = event.pattern_match.group(1).strip().lower()
             text = MENU_MAP.get(cmd)
-            # Use `if text is not None` to handle empty strings
-            if text is not None:
-                await safe_edit(event, text or "⚠️ This menu is empty.")
-            else:
-                await safe_edit(event, f"❌ Menu '{cmd}' not found.")
-
-        # ─── ADD .cmds COMMAND ─────────────────────────────────────────────
-        @user_bot.on(events.NewMessage(pattern=r'\.cmds', outgoing=True))
-        async def cmd_cmds(event):
-            cmd_list = sorted(commands.keys())
-            if not cmd_list:
-                await safe_edit(event, "📭 No commands registered.")
-                return
-            msg = "📋 **Available Commands:**\n" + "\n".join(f"• .{c}" for c in cmd_list)
-            await safe_edit(event, msg)
+            if text:
+                await safe_edit(event, text)
 
         # ─── STOPALL ────────────────────────────────────────────────────────
         @register_cmd("stopall")
@@ -13880,14 +13782,14 @@ async def run_user_bot(session_string, chat_id):
                 pass
             msg = await user_bot.send_message(event.chat_id, "✍️ ")
             for i in range(1, len(stylish_text) + 1):
-                current_text = f"{stylish_text[:i]}"
+                current_text = f"✍️ {stylish_text[:i]}"
                 try:
                     await msg.edit(current_text)
-                    await asyncio.sleep(random.uniform(0.05, 0.2))
+                    await asyncio.sleep(random.uniform(0.15, 0.6))
                 except Exception:
                     pass
             try:
-                await msg.edit(stylish_text)
+                await msg.edit(f"✍️ {stylish_text}")
             except:
                 pass
 
@@ -13944,7 +13846,7 @@ async def run_user_bot(session_string, chat_id):
             "mock": lambda s: ''.join(c.upper() if i%2 else c.lower() for i,c in enumerate(s)),
             "spaceit": lambda s: ' '.join(s),
             "removespaces": lambda s: ''.join(s.split()),
-            "clap": lambda s: ' '.join(s.split()),
+            "clap": lambda s: ' 👏 '.join(s.split()),
             "mirror": lambda s: s + s[::-1],
             "flip_text": lambda s: s[::-1].translate(str.maketrans("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "ɐqɔpǝɟɓɥıɾʞlɯuodbɹsʇnʌʍxʎz∀BƆDƎℲ⅁HIſʞLMNOԀQɹS┴∩ΛMX⅄Z")),
         }
@@ -16759,10 +16661,7 @@ async def run_user_bot(session_string, chat_id):
             else:
                 await safe_edit(event, "⚠️ No active raid for these users")
 
-        # ─── PREMIUM RAID START/STOP ──────────────────────────────────
-        premium_raid_tasks = {}
-        premium_spam_tasks = {}
-
+        # ─── PREMIUM RAID START/STOP ──────────────────────────────────────────
         for start_cmd, stop_cmd in [
             ("mr", "smr"), ("mr2", "smr2"), ("br", "sbr"), ("br2", "sbr2"),
             ("br3", "sbr3"), ("sqr", "ssqr"), ("sq2", "ssq2"), ("cr", "scr"),
@@ -16773,72 +16672,29 @@ async def run_user_bot(session_string, chat_id):
                 targets = await get_targets(event, arg)
                 if not targets:
                     return
-                count = None
-                if arg:
-                    parts = arg.strip().split()
-                    if parts and parts[-1].isdigit():
-                        count = int(parts[-1])
-                        if count < 1: count = 1
-                        if count > 100: count = 100
-                text_list = premium_raid_texts.get(cmd, [])
-                if not text_list:
-                    await safe_edit(event, f"⚠️ No texts for `{cmd}`. Using default.")
-                    text_list = [f"🔥 Premium Raid {cmd}!"]
-                chat = event.chat_id
-                target_user = None
-                reply_to = None
-                if event.is_reply:
-                    reply = await event.get_reply_message()
-                    if reply:
-                        reply_to = reply.id
-                        target_user = reply.sender_id
-                        if target_user and await is_protected(target_user, cmd):
-                            await safe_edit(event, f"🚫 Target is protected from `{cmd}`.")
-                            return
-                if chat in user_bot.spray_tasks:
-                    await safe_edit(event, "⚠️ Already a spray running in this chat.")
-                    return
-                key = f"{chat}_{cmd}"
-                await safe_edit(event, f"⚔️ Premium Raid `{cmd}` started on target{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}...")
-                async def loop():
-                    sent = 0
-                    idx = 0
-                    try:
-                        while key in user_bot.spray_tasks:
-                            if count is not None and sent >= count:
-                                break
-                            if target_user and sent % 10 == 0 and await is_protected(target_user, cmd):
-                                await safe_send(chat, f"🛑 Target is now protected from `{cmd}`. Stopping.")
-                                break
-                            txt = text_list[idx % len(text_list)]
-                            idx += 1
-                            sent += 1
-                            await safe_send(chat, txt, reply_to=reply_to)
-                            if sent % 30 == 0:
-                                await asyncio.sleep(3)
-                            await asyncio.sleep(user_bot.SPRAY_DELAY)
-                    except asyncio.CancelledError:
-                        pass
-                    finally:
-                        user_bot.spray_tasks.pop(key, None)
-                        if sent > 0:
-                            await safe_send(chat, f"✅ Premium Raid `{cmd}` done: {sent} messages sent.")
-                user_bot.spray_tasks[key] = asyncio.create_task(loop())
-                await safe_edit(event, f"⚔️ Premium Raid `{cmd}` started.")
+                if cmd not in user_bot.premium_raid_targets:
+                    user_bot.premium_raid_targets[cmd] = {}
+                for uid in targets:
+                    user_bot.premium_raid_targets[cmd][uid] = None
+                added = ", ".join(str(uid) for uid in targets)
+                await safe_edit(event, f"⚔️ Premium Raid `{cmd}` started on {added} (infinite).")
 
             @register_cmd(stop_cmd, premium=True)
             async def stop_premium_raid(event, arg, cmd=start_cmd):
-                chat = event.chat_id
-                key = f"{chat}_{cmd}"
-                if key in user_bot.spray_tasks:
-                    try:
-                        user_bot.spray_tasks[key].cancel()
-                    except:
-                        pass
-                    user_bot.spray_tasks.pop(key, None)
-                    await safe_edit(event, f"🛑 Premium Raid `{cmd}` stopped.")
+                targets = await get_targets(event, arg)
+                if not targets:
+                    if cmd in user_bot.premium_raid_targets:
+                        del user_bot.premium_raid_targets[cmd]
+                    await safe_edit(event, f"🛑 Premium Raid `{cmd}` stopped for all.")
+                    return
+                if cmd in user_bot.premium_raid_targets:
+                    for uid in targets:
+                        user_bot.premium_raid_targets[cmd].pop(uid, None)
+                    if not user_bot.premium_raid_targets[cmd]:
+                        del user_bot.premium_raid_targets[cmd]
+                    await safe_edit(event, f"🛑 Premium Raid `{cmd}` stopped for given users.")
                 else:
-                    await safe_edit(event, f"⚠️ No active `{cmd}` raid in this chat.")
+                    await safe_edit(event, f"⚠️ No active premium raid `{cmd}`.")
 
         for start_cmd, stop_cmd in [
             ("ms", "sms"), ("ms2", "sms2"), ("bs", "sbs"), ("bs2", "sbs2"),
@@ -16850,72 +16706,29 @@ async def run_user_bot(session_string, chat_id):
                 targets = await get_targets(event, arg)
                 if not targets:
                     return
-                count = None
-                if arg:
-                    parts = arg.strip().split()
-                    if parts and parts[-1].isdigit():
-                        count = int(parts[-1])
-                        if count < 1: count = 1
-                        if count > 100: count = 100
-                text_list = premium_spam_texts.get(cmd, [])
-                if not text_list:
-                    await safe_edit(event, f"⚠️ No texts for `{cmd}`. Using default.")
-                    text_list = [f"💣 Premium Spam {cmd}!"]
-                chat = event.chat_id
-                target_user = None
-                reply_to = None
-                if event.is_reply:
-                    reply = await event.get_reply_message()
-                    if reply:
-                        reply_to = reply.id
-                        target_user = reply.sender_id
-                        if target_user and await is_protected(target_user, cmd):
-                            await safe_edit(event, f"🚫 Target is protected from `{cmd}`.")
-                            return
-                key = f"{chat}_{cmd}"
-                if key in user_bot.spray_tasks:
-                    await safe_edit(event, "⚠️ Already a spam running in this chat.")
-                    return
-                await safe_edit(event, f"💣 Premium Spam `{cmd}` started on target{' with reply' if reply_to else ''}{' (' + str(count) + ' msgs)' if count else ' (infinite)'}...")
-                async def loop():
-                    sent = 0
-                    idx = 0
-                    try:
-                        while key in user_bot.spray_tasks:
-                            if count is not None and sent >= count:
-                                break
-                            if target_user and sent % 10 == 0 and await is_protected(target_user, cmd):
-                                await safe_send(chat, f"🛑 Target is now protected from `{cmd}`. Stopping.")
-                                break
-                            txt = text_list[idx % len(text_list)]
-                            idx += 1
-                            sent += 1
-                            await safe_send(chat, txt, reply_to=reply_to)
-                            if sent % 30 == 0:
-                                await asyncio.sleep(3)
-                            await asyncio.sleep(user_bot.SPRAY_DELAY)
-                    except asyncio.CancelledError:
-                        pass
-                    finally:
-                        user_bot.spray_tasks.pop(key, None)
-                        if sent > 0:
-                            await safe_send(chat, f"✅ Premium Spam `{cmd}` done: {sent} messages sent.")
-                user_bot.spray_tasks[key] = asyncio.create_task(loop())
-                await safe_edit(event, f"💣 Premium Spam `{cmd}` started.")
+                if cmd not in user_bot.premium_spam_targets:
+                    user_bot.premium_spam_targets[cmd] = {}
+                for uid in targets:
+                    user_bot.premium_spam_targets[cmd][uid] = None
+                added = ", ".join(str(uid) for uid in targets)
+                await safe_edit(event, f"💣 Premium Spam `{cmd}` started on {added} (infinite).")
 
             @register_cmd(stop_cmd, premium=True)
             async def stop_premium_spam(event, arg, cmd=start_cmd):
-                chat = event.chat_id
-                key = f"{chat}_{cmd}"
-                if key in user_bot.spray_tasks:
-                    try:
-                        user_bot.spray_tasks[key].cancel()
-                    except:
-                        pass
-                    user_bot.spray_tasks.pop(key, None)
-                    await safe_edit(event, f"🛑 Premium Spam `{cmd}` stopped.")
+                targets = await get_targets(event, arg)
+                if not targets:
+                    if cmd in user_bot.premium_spam_targets:
+                        del user_bot.premium_spam_targets[cmd]
+                    await safe_edit(event, f"🛑 Premium Spam `{cmd}` stopped for all.")
+                    return
+                if cmd in user_bot.premium_spam_targets:
+                    for uid in targets:
+                        user_bot.premium_spam_targets[cmd].pop(uid, None)
+                    if not user_bot.premium_spam_targets[cmd]:
+                        del user_bot.premium_spam_targets[cmd]
+                    await safe_edit(event, f"🛑 Premium Spam `{cmd}` stopped for given users.")
                 else:
-                    await safe_edit(event, f"⚠️ No active `{cmd}` spam in this chat.")
+                    await safe_edit(event, f"⚠️ No active premium spam `{cmd}`.")
 
         @register_cmd("addadmin", needs_reply=True)
         async def cmd_addadmin(event, arg):
@@ -17352,8 +17165,8 @@ async def run_user_bot(session_string, chat_id):
             else:
                 await safe_edit(event, "⚠️ No active Deathgod spray in this chat.")
 
-        # ─── DM SHIELD COMMANDS (premium) ─────────────────────────────────────
-        @register_cmd("dmshield", premium=True)
+        # ─── DM SHIELD COMMANDS ──────────────────────────────────────────────────
+        @register_cmd("dmshield")
         async def cmd_dmshield(event, arg):
             if not is_admin(event.sender_id):
                 return
@@ -17368,7 +17181,7 @@ async def run_user_bot(session_string, chat_id):
             else:
                 await safe_edit(event, "❌ Usage: .dmshield on/off")
 
-        @register_cmd("approve", premium=True)
+        @register_cmd("approve")
         async def cmd_approve(event, arg):
             if not is_admin(event.sender_id):
                 return
@@ -17381,7 +17194,7 @@ async def run_user_bot(session_string, chat_id):
                 added.append(str(uid))
             await safe_edit(event, f"✅ Approved: {', '.join(added)}")
 
-        @register_cmd("unapprove", premium=True)
+        @register_cmd("unapprove")
         async def cmd_unapprove(event, arg):
             if not is_admin(event.sender_id):
                 return
@@ -17395,7 +17208,7 @@ async def run_user_bot(session_string, chat_id):
                     removed.append(str(uid))
             await safe_edit(event, f"🛑 Removed approval: {', '.join(removed)}")
 
-        @register_cmd("block", premium=True, needs_reply=True)
+        @register_cmd("block", needs_reply=True)
         async def cmd_block(event, arg):
             if not is_admin(event.sender_id):
                 return
@@ -17406,7 +17219,7 @@ async def run_user_bot(session_string, chat_id):
                 await block_user(me.id, uid)
             await safe_edit(event, f"✅ Blocked: {', '.join(str(uid) for uid in targets)}")
 
-        @register_cmd("unblock", premium=True, needs_reply=True)
+        @register_cmd("unblock", needs_reply=True)
         async def cmd_unblock(event, arg):
             if not is_admin(event.sender_id):
                 return
@@ -17417,7 +17230,7 @@ async def run_user_bot(session_string, chat_id):
                 await unblock_user(me.id, uid)
             await safe_edit(event, f"✅ Unblocked: {', '.join(str(uid) for uid in targets)}")
 
-        @register_cmd("blockedlist", premium=True)
+        @register_cmd("blockedlist")
         async def cmd_blockedlist(event, _):
             if not is_admin(event.sender_id):
                 return
@@ -17434,20 +17247,6 @@ async def run_user_bot(session_string, chat_id):
                     msg += f"• {uid}\n"
             await safe_edit(event, msg)
 
-        # ─── AUTO-REPLY (works for all incoming private messages) ──────────
-        @user_bot.on(events.NewMessage(incoming=True))
-        async def auto_reply_handler(event):
-            if event.out:
-                return
-            if not event.is_private:
-                return
-            if event.sender_id in OWNER_IDS:
-                return
-            if not user_bot.auto_reply:
-                return
-            await safe_send(event.chat_id, user_bot.auto_reply, reply_to=event.id)
-
-        # ─── FILTERS ──────────────────────────────────────────────────────────
         @register_cmd("addfilter")
         async def cmd_addfilter(event, arg):
             if not is_admin(event.sender_id):
@@ -17504,7 +17303,6 @@ async def run_user_bot(session_string, chat_id):
             save_autoreply("")
             await safe_edit(event, "🗑️ Auto-reply removed.")
 
-        # ─── GODPROTECTION ──────────────────────────────────────────────────────
         @register_cmd("godprotection")
         async def cmd_godprotection(event, arg):
             if not is_admin(event.sender_id):
@@ -17588,7 +17386,7 @@ async def run_user_bot(session_string, chat_id):
             except Exception as e:
                 await safe_edit(event, f"❌ DB error: {e}")
 
-        # ─── GOD PROTECTION AUTO HANDLER ─────────────────────────────
+        # ─── GOD PROTECTION AUTO HANDLER ──────────────────────────────────────
         async def _gp_take_action(cid, uid, action, auto_mute=False, mute_min=5):
             try:
                 if action == "delete":
@@ -17639,9 +17437,6 @@ async def run_user_bot(session_string, chat_id):
             sid = event.sender_id
             now = time.time()
 
-            # Abusive words check (empty list)
-            ABUSIVE_WORDS = set()  # empty
-            # Mention detection
             mentions = re.findall(r'@\w+|@\d+', event.text)
             if mentions:
                 if sid not in user_bot.gp_mentions:
@@ -17657,7 +17452,6 @@ async def run_user_bot(session_string, chat_id):
                     await safe_send(cid, f"🛡️ **GP:** Mass mention detected. Action taken on `{sid}`.")
                     user_bot.gp_mentions[sid] = []
 
-            # Duplicate message detection
             if sid not in user_bot.gp_duplicate:
                 user_bot.gp_duplicate[sid] = []
             user_bot.gp_duplicate[sid].append((event.text.lower().strip(), now))
@@ -17671,7 +17465,6 @@ async def run_user_bot(session_string, chat_id):
                 await _gp_take_action(cid, sid, "delete" if action != "delete" else action, auto_mute, mute_min)
                 user_bot.gp_duplicate[sid] = []
 
-            # Flood detection
             if sid not in user_bot.gp_flood:
                 user_bot.gp_flood[sid] = []
             user_bot.gp_flood[sid].append(now)
@@ -18319,6 +18112,26 @@ async def run_user_bot(session_string, chat_id):
                 await safe_send(chat, random.choice(doom_texts) if doom_texts else "💀 Doom!", reply_to=event.id)
                 user_bot.reply_cooldowns[sender] = now
                 return
+
+            for cmd, targets_dict in user_bot.premium_raid_targets.items():
+                if sender in targets_dict:
+                    if await is_protected(sender, cmd):
+                        await safe_send(chat, f"🚫 This user has protected themselves from premium raid `{cmd}`.", reply_to=event.id)
+                        return
+                    text_list = premium_raid_texts.get(cmd, [])
+                    await safe_send(chat, random.choice(text_list) if text_list else f"🔥 Premium Raid {cmd}!", reply_to=event.id)
+                    user_bot.reply_cooldowns[sender] = now
+                    return
+
+            for cmd, targets_dict in user_bot.premium_spam_targets.items():
+                if sender in targets_dict:
+                    if await is_protected(sender, cmd):
+                        await safe_send(chat, f"🚫 This user has protected themselves from premium spam `{cmd}`.", reply_to=event.id)
+                        return
+                    text_list = premium_spam_texts.get(cmd, [])
+                    await safe_send(chat, random.choice(text_list) if text_list else f"💣 Premium Spam {cmd}!", reply_to=event.id)
+                    user_bot.reply_cooldowns[sender] = now
+                    return
 
         # ─── CACHE & ANTI-DELETE ──────────────────────────────────────────────
         @user_bot.on(events.NewMessage(outgoing=True))
