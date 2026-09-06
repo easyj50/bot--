@@ -9,7 +9,7 @@ import re
 import glob
 import signal
 import sys
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, List
 from io import BytesIO
 import requests
 import qrcode
@@ -396,6 +396,578 @@ async def is_protected(target_user: int, command: str) -> bool:
     protections = await get_protections(target_user)
     return command in protections
 
+# ─── DM SHIELD FUNCTIONS ────────────────────────────────────────────
+async def get_dm_settings(user_id: int):
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM dm_settings WHERE user_id = $1", user_id)
+        if not row:
+            await conn.execute(
+                "INSERT INTO dm_settings (user_id, shield_enabled, god_protection, freeze, auto_reply) VALUES ($1, FALSE, FALSE, FALSE, NULL)",
+                user_id
+            )
+            return {"user_id": user_id, "shield_enabled": False, "god_protection": False, "freeze": False, "auto_reply": None}
+        return dict(row)
+
+async def update_dm_setting(user_id: int, key: str, value):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            f"UPDATE dm_settings SET {key} = $1 WHERE user_id = $2",
+            value, user_id
+        )
+
+async def is_user_approved(user_id: int, target_id: int) -> bool:
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT 1 FROM dm_approved WHERE user_id = $1 AND approved_id = $2", user_id, target_id)
+        return row is not None
+
+async def add_approved(user_id: int, target_id: int):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO dm_approved (user_id, approved_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            user_id, target_id
+        )
+
+async def remove_approved(user_id: int, target_id: int):
+    async with db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM dm_approved WHERE user_id = $1 AND approved_id = $2", user_id, target_id)
+
+async def is_user_blocked(user_id: int, target_id: int) -> bool:
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT 1 FROM dm_blocked WHERE user_id = $1 AND blocked_id = $2", user_id, target_id)
+        return row is not None
+
+async def add_blocked(user_id: int, target_id: int):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO dm_blocked (user_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            user_id, target_id
+        )
+
+async def remove_blocked(user_id: int, target_id: int):
+    async with db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM dm_blocked WHERE user_id = $1 AND blocked_id = $2", user_id, target_id)
+
+async def get_warning_count(user_id: int, target_id: int) -> int:
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT count FROM dm_warnings WHERE user_id = $1 AND target_id = $2", user_id, target_id)
+        return row["count"] if row else 0
+
+async def increment_warning(user_id: int, target_id: int):
+    async with db_pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO dm_warnings (user_id, target_id, count)
+            VALUES ($1, $2, 1)
+            ON CONFLICT (user_id, target_id) DO UPDATE SET count = dm_warnings.count + 1
+            """,
+            user_id, target_id
+        )
+
+async def reset_warnings(user_id: int, target_id: int):
+    async with db_pool.acquire() as conn:
+        await conn.execute("DELETE FROM dm_warnings WHERE user_id = $1 AND target_id = $2", user_id, target_id)
+
+# ─── RAID MESSAGE LISTS (EMPTY AS REQUESTED) ──────────────────────
+text_list = []  # empty
+nc_list = []    # empty
+
+# Additional lists for specific raid types – all empty
+shayari_list = []
+rizz_list = []
+pickup_list = []
+romance_list = []
+troll_list = []
+ragebait_list = []
+roast_list = []
+attack_list = []
+war_list = []
+savage_list = []
+ultra_list = []
+shame_list = []
+diss_list = []
+devil_list = []
+karma_list = []
+doom_list = []
+
+# ─── USERBOT CLIENTS ──────────────────────────────────────────────
+userbot_clients: Dict[int, TelegramClient] = {}
+main_bot_client: Optional[TelegramClient] = None
+
+# ─── COMMAND EXECUTION ENGINE ──────────────────────────────────────
+async def execute_raid_command(client: TelegramClient, user_id: int, event, cmd: str, args: List[str]):
+    """
+    Generic raid command executor.
+    Determines target (from reply or mention/ID) and sends messages.
+    """
+    # Get target
+    target_id = None
+    if event.is_reply:
+        reply_msg = await event.get_reply_message()
+        if reply_msg:
+            target_id = reply_msg.sender_id
+    if not target_id:
+        # try to parse from args
+        for arg in args:
+            if arg.startswith('@'):
+                try:
+                    entity = await client.get_entity(arg)
+                    target_id = entity.id
+                    break
+                except:
+                    pass
+            elif arg.isdigit():
+                target_id = int(arg)
+                break
+    if not target_id:
+        await event.reply("❌ No target found. Reply to a user or provide @username/id.")
+        return
+
+    # Extract message content from args (skip the target if present)
+    msg_parts = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg.startswith('@') or arg.isdigit():
+            # might be target, but we already parsed it; we could still have it
+            continue
+        msg_parts.append(arg)
+    msg_text = ' '.join(msg_parts)
+
+    # Determine which messages to send based on command
+    messages_to_send = []
+    custom_messages_provided = bool(msg_text.strip())
+
+    # Map commands to message sources
+    if cmd in ["reply", "sreply", "rr", "srr"]:
+        # These are reply commands: send the text as reply once
+        if custom_messages_provided:
+            messages_to_send = [msg_text]
+        else:
+            await event.reply("❌ Please provide a message to reply with.")
+            return
+    elif cmd in ["flag", "sflag"]:
+        # flag: reply with flag text (similar)
+        if custom_messages_provided:
+            messages_to_send = [msg_text]
+        else:
+            await event.reply("❌ Please provide a flag message.")
+            return
+    elif cmd in ["hrr", "shrr"]:
+        # hrr: high reply raid? Similar
+        if custom_messages_provided:
+            messages_to_send = [msg_text]
+        else:
+            await event.reply("❌ Provide a message.")
+            return
+    elif cmd in ["replygod", "sgod"]:
+        # replygod: send from text_list and nc_list? but they are empty.
+        if not text_list and not nc_list and not custom_messages_provided:
+            await event.reply("❌ No messages set for replygod. Use .settext or provide a message.")
+            return
+        if custom_messages_provided:
+            messages_to_send = [msg_text]
+        else:
+            messages_to_send = text_list + nc_list
+    elif cmd == "deathgod" or cmd == "sdeathgod":
+        if not text_list and not nc_list and not custom_messages_provided:
+            await event.reply("❌ No messages set for deathgod. Use .settext or provide a message.")
+            return
+        if custom_messages_provided:
+            messages_to_send = [msg_text]
+        else:
+            messages_to_send = text_list + nc_list
+    elif cmd in ["customraid", "stopcustomraid"]:
+        # customraid: use custom messages set by user, but we don't have a storage; we'll just use provided text.
+        if custom_messages_provided:
+            messages_to_send = [msg_text]
+        else:
+            await event.reply("❌ Provide a message for custom raid.")
+            return
+    elif cmd in ["shayariraid", "sshayariraid"]:
+        messages_to_send = shayari_list if shayari_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["rizzraid", "srizzraid"]:
+        messages_to_send = rizz_list if rizz_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["pickupraid", "spickupraid"]:
+        messages_to_send = pickup_list if pickup_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["romanceraid", "sromanceraid"]:
+        messages_to_send = romance_list if romance_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["trollraid", "strollraid"]:
+        messages_to_send = troll_list if troll_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["ragebaitraid", "sragebaitraid"]:
+        messages_to_send = ragebait_list if ragebait_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["roastraid", "sroastraid"]:
+        messages_to_send = roast_list if roast_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["attackraid", "sattackraid"]:
+        messages_to_send = attack_list if attack_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["warraid", "swarraid"]:
+        messages_to_send = war_list if war_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["savageraid", "ssavageraid"]:
+        messages_to_send = savage_list if savage_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["ultraraid", "sultraraid"]:
+        messages_to_send = ultra_list if ultra_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["shameraid", "sshameraid"]:
+        messages_to_send = shame_list if shame_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["dissraid", "sdissraid"]:
+        messages_to_send = diss_list if diss_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["devilraid", "sdevilraid"]:
+        messages_to_send = devil_list if devil_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["karmaraid", "skarmaraid"]:
+        messages_to_send = karma_list if karma_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["doomraid", "sdoomraid"]:
+        messages_to_send = doom_list if doom_list else ( [msg_text] if custom_messages_provided else [] )
+    elif cmd in ["spray", "dspray", "tspray", "rspray", "multispray", "countspray"]:
+        # spray commands: send the same message repeatedly. Count can be specified.
+        if not custom_messages_provided:
+            await event.reply("❌ Provide a message to spray.")
+            return
+        # Determine count: if cmd contains count or multispray, parse count from args? or default 10
+        count = 10
+        if cmd == "countspray":
+            try:
+                count = int(args[-1]) if args[-1].isdigit() else 10
+                msg_text = ' '.join(args[:-1])  # remove count
+            except:
+                count = 10
+        elif cmd == "multispray":
+            # multiple messages? not exactly; we'll just send msg_text count times
+            pass
+        messages_to_send = [msg_text] * count
+    elif cmd in ["mr", "smr", "mr2", "smr2"]:
+        # mr: message raid? similar to reply
+        if custom_messages_provided:
+            messages_to_send = [msg_text]
+        else:
+            await event.reply("❌ Provide a message.")
+            return
+    else:
+        # For other commands like br, br2, etc., we'll treat as single message
+        if custom_messages_provided:
+            messages_to_send = [msg_text]
+        else:
+            await event.reply(f"❌ No message provided for {cmd}. Use .set or provide text.")
+            return
+
+    if not messages_to_send:
+        await event.reply(f"❌ No messages to send for {cmd}. Set up the list or provide text.")
+        return
+
+    # Send messages
+    for msg in messages_to_send:
+        try:
+            await client.send_message(target_id, msg)
+            await asyncio.sleep(0.5)  # small delay to avoid flood
+        except FloodWaitError as e:
+            await asyncio.sleep(e.seconds)
+        except Exception as e:
+            logging.error(f"Error sending raid message: {e}")
+
+    await event.reply(f"✅ Raid command `{cmd}` executed on target {target_id} with {len(messages_to_send)} messages.")
+
+# ─── DM SHIELD HANDLER ─────────────────────────────────────────────
+async def handle_dm_shield(client: TelegramClient, user_id: int, event):
+    sender = await event.get_sender()
+    sender_id = sender.id
+    if sender_id == user_id:
+        return
+
+    freeze = await get_freeze(user_id)
+    if freeze:
+        return
+
+    settings = await get_dm_settings(user_id)
+    if not settings["shield_enabled"]:
+        return
+
+    if await is_user_blocked(user_id, sender_id):
+        return
+
+    # auto-reply regardless of approval? Usually auto-reply for all DMs if set.
+    auto_reply = settings.get("auto_reply")
+    if auto_reply:
+        await event.reply(auto_reply)
+
+    # If approved, do not warn/block
+    if await is_user_approved(user_id, sender_id):
+        return
+
+    # Not approved: warning system
+    warn_count = await get_warning_count(user_id, sender_id)
+    if warn_count < 2:  # 0,1,2 -> 3 warnings then block
+        warn_count += 1
+        await increment_warning(user_id, sender_id)
+        msg = f"⚠️ **Warning {warn_count}/3**\nYou are not approved to DM this user. Please get approval.\nIf you continue, you will be blocked."
+        await event.reply(msg)
+    else:
+        try:
+            await client.block_user(sender_id)
+            await add_blocked(user_id, sender_id)
+            await reset_warnings(user_id, sender_id)
+            await event.reply("🚫 You have been blocked due to excessive DMs.")
+        except Exception as e:
+            logging.error(f"Error blocking user {sender_id} for {user_id}: {e}")
+
+# ─── GROUP COMMAND HANDLER ──────────────────────────────────────────
+async def handle_group_commands(client: TelegramClient, user_id: int, event):
+    if not event.raw_text.startswith('.'):
+        return
+    sender = await event.get_sender()
+    if sender.id != user_id:
+        return
+
+    parts = event.raw_text.split()
+    cmd = parts[0][1:].lower()
+    args = parts[1:]
+
+    # Check protection
+    if cmd in PROTECTED_COMMANDS:
+        target_id = None
+        if event.is_reply:
+            reply_msg = await event.get_reply_message()
+            if reply_msg:
+                target_id = reply_msg.sender_id
+        if not target_id:
+            for arg in args:
+                if arg.startswith('@'):
+                    try:
+                        entity = await client.get_entity(arg)
+                        target_id = entity.id
+                        break
+                    except:
+                        pass
+                elif arg.isdigit():
+                    target_id = int(arg)
+                    break
+        if target_id:
+            if await is_protected(target_id, cmd):
+                await event.reply(f"🛡️ Target user is protected from `{cmd}` raids (Premium).")
+                return
+
+    # Execute the command (if not protected or not a protected command)
+    await execute_raid_command(client, user_id, event, cmd, args)
+
+# ─── USERBOT START FUNCTION ─────────────────────────────────────────
+async def start_userbot(user_id: int, session_str: str):
+    if user_id in userbot_clients:
+        await userbot_clients[user_id].disconnect()
+        del userbot_clients[user_id]
+    client = TelegramClient(StringSession(session_str), API_ID, API_HASH)
+    await client.start()
+    userbot_clients[user_id] = client
+
+    @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private and not e.out))
+    async def dm_handler(event):
+        await handle_dm_shield(client, user_id, event)
+
+    @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_group and not e.out))
+    async def group_handler(event):
+        await handle_group_commands(client, user_id, event)
+
+    logging.info(f"Userbot started for user {user_id}")
+    return client
+
+# ─── MAIN BOT HANDLERS ─────────────────────────────────────────────
+async def main_bot_handlers(client: TelegramClient):
+    @client.on(events.NewMessage(pattern='/start'))
+    async def start_cmd(event):
+        await event.reply("Welcome to UserBot Manager! Use /addsession to add your session.")
+
+    @client.on(events.NewMessage(pattern='/addsession'))
+    async def add_session_cmd(event):
+        await event.reply("Please send your Telethon StringSession as a reply to this message.")
+
+    @client.on(events.NewMessage(func=lambda e: e.is_private and not e.out and e.reply_to_msg_id))
+    async def session_reply(event):
+        # Check if the replied message is /addsession
+        replied = await event.get_reply_message()
+        if replied and replied.text and replied.text.startswith('/addsession'):
+            sess = event.raw_text.strip()
+            if sess:
+                user_id = event.sender_id
+                await save_session(user_id, sess)
+                await start_userbot(user_id, sess)
+                await event.reply("✅ Session saved and userbot started!")
+            else:
+                await event.reply("❌ Please send a valid session string.")
+
+    @client.on(events.NewMessage(pattern='/premium'))
+    async def premium_cmd(event):
+        # For admin use: add premium to a user
+        # Usage: /premium <user_id> <plan> <days>
+        # Only owners can use
+        if event.sender_id not in MY_OWNER_IDS:
+            await event.reply("❌ You are not authorized.")
+            return
+        args = event.raw_text.split()
+        if len(args) < 4:
+            await event.reply("Usage: /premium <user_id> <plan> <days>")
+            return
+        try:
+            uid = int(args[1])
+            plan = args[2]
+            days = int(args[3])
+            await add_premium_user(uid, plan, days)
+            await event.reply(f"✅ Premium added for user {uid} with plan {plan} for {days} days.")
+        except Exception as e:
+            await event.reply(f"❌ Error: {e}")
+
+    @client.on(events.NewMessage(pattern='/wallet'))
+    async def wallet_cmd(event):
+        uid = event.sender_id
+        balance = await get_balance(uid)
+        await event.reply(f"💰 Your wallet balance: ${balance:.2f}")
+
+    @client.on(events.NewMessage(pattern='/addbalance'))
+    async def add_balance_cmd(event):
+        if event.sender_id not in MY_OWNER_IDS:
+            await event.reply("❌ Unauthorized.")
+            return
+        args = event.raw_text.split()
+        if len(args) < 3:
+            await event.reply("Usage: /addbalance <user_id> <amount>")
+            return
+        try:
+            uid = int(args[1])
+            amount = float(args[2])
+            await add_balance(uid, amount)
+            await event.reply(f"✅ Added ${amount:.2f} to user {uid}.")
+        except Exception as e:
+            await event.reply(f"❌ Error: {e}")
+
+    @client.on(events.NewMessage(pattern='/setshield'))
+    async def set_shield_cmd(event):
+        # .setshield on/off
+        args = event.raw_text.split()
+        if len(args) < 2:
+            await event.reply("Usage: .setshield on/off")
+            return
+        state = args[1].lower()
+        if state in ['on', 'true', '1']:
+            await update_dm_setting(event.sender_id, 'shield_enabled', True)
+            await event.reply("✅ DM Shield is now **ON**.")
+        elif state in ['off', 'false', '0']:
+            await update_dm_setting(event.sender_id, 'shield_enabled', False)
+            await event.reply("✅ DM Shield is now **OFF**.")
+        else:
+            await event.reply("Invalid state. Use 'on' or 'off'.")
+
+    @client.on(events.NewMessage(pattern='/setautoreply'))
+    async def set_autoreply_cmd(event):
+        # /setautoreply <text> or /setautoreply off
+        text = event.raw_text.replace('/setautoreply', '').strip()
+        if not text:
+            await event.reply("Usage: /setautoreply <text> or /setautoreply off")
+            return
+        if text.lower() == 'off':
+            await update_dm_setting(event.sender_id, 'auto_reply', None)
+            await event.reply("✅ Auto-reply turned OFF.")
+        else:
+            await update_dm_setting(event.sender_id, 'auto_reply', text)
+            await event.reply(f"✅ Auto-reply set to: {text}")
+
+    @client.on(events.NewMessage(pattern='/approve'))
+    async def approve_cmd(event):
+        # /approve @user or reply to user
+        target_id = None
+        if event.is_reply:
+            reply = await event.get_reply_message()
+            if reply:
+                target_id = reply.sender_id
+        if not target_id:
+            args = event.raw_text.split()
+            if len(args) > 1:
+                try:
+                    entity = await client.get_entity(args[1])
+                    target_id = entity.id
+                except:
+                    pass
+        if not target_id:
+            await event.reply("❌ Please reply to a user or provide @username.")
+            return
+        await add_approved(event.sender_id, target_id)
+        await event.reply(f"✅ User {target_id} approved to DM you.")
+
+    @client.on(events.NewMessage(pattern='/block'))
+    async def block_cmd(event):
+        # /block @user or reply
+        target_id = None
+        if event.is_reply:
+            reply = await event.get_reply_message()
+            if reply:
+                target_id = reply.sender_id
+        if not target_id:
+            args = event.raw_text.split()
+            if len(args) > 1:
+                try:
+                    entity = await client.get_entity(args[1])
+                    target_id = entity.id
+                except:
+                    pass
+        if not target_id:
+            await event.reply("❌ Please reply to a user or provide @username.")
+            return
+        try:
+            await client.block_user(target_id)
+            await add_blocked(event.sender_id, target_id)
+            await event.reply(f"✅ User {target_id} blocked.")
+        except Exception as e:
+            await event.reply(f"❌ Error: {e}")
+
+    @client.on(events.NewMessage(pattern='/unblock'))
+    async def unblock_cmd(event):
+        target_id = None
+        if event.is_reply:
+            reply = await event.get_reply_message()
+            if reply:
+                target_id = reply.sender_id
+        if not target_id:
+            args = event.raw_text.split()
+            if len(args) > 1:
+                try:
+                    entity = await client.get_entity(args[1])
+                    target_id = entity.id
+                except:
+                    pass
+        if not target_id:
+            await event.reply("❌ Please reply to a user or provide @username.")
+            return
+        try:
+            await client.unblock_user(target_id)
+            await remove_blocked(event.sender_id, target_id)
+            await event.reply(f"✅ User {target_id} unblocked.")
+        except Exception as e:
+            await event.reply(f"❌ Error: {e}")
+
+# ─── LOAD AND START ALL USERBOTS ──────────────────────────────────
+async def load_and_start_all_userbots():
+    sessions = await load_sessions()
+    for user_id, sess in sessions.items():
+        try:
+            await start_userbot(user_id, sess)
+        except Exception as e:
+            logging.error(f"Failed to start userbot for {user_id}: {e}")
+
+# ─── MAIN ──────────────────────────────────────────────────────────
+async def main():
+    global MAIN_BOT_CLIENT
+    logging.basicConfig(level=logging.INFO)
+
+    await init_db()
+    await init_cipher()
+
+    MAIN_BOT_CLIENT = TelegramClient(BOT_TOKEN, API_ID, API_HASH)
+    await MAIN_BOT_CLIENT.start(bot_token=BOT_TOKEN)
+    logging.info("Main bot started")
+
+    await main_bot_handlers(MAIN_BOT_CLIENT)
+
+    await load_and_start_all_userbots()
+
+    await MAIN_BOT_CLIENT.run_until_disconnected()
+
+if __name__ == "__main__":
+    asyncio.run(main())
 # ─── MAIN BOT ─────────────────────────────────────────────────────
 MAIN_BOT_CLIENT = TelegramClient(
     "main_bot_session",
@@ -13482,7 +14054,7 @@ async def run_user_bot(session_string, chat_id):
         user_bot.user_filters = await load_user_filters(me.id)
         user_bot.filter_reply_ids = set()
 
-        # ─── DM SHIELD FUNCTIONS ──────────────────────────────────────
+       # ─── DM SHIELD FUNCTIONS ──────────────────────────────────────
         async def get_warnings(uid: int, target_id: int) -> int:
             async with db_pool.acquire() as conn:
                 row = await conn.fetchrow(
@@ -13513,12 +14085,16 @@ async def run_user_bot(session_string, chat_id):
                 )
 
         async def is_blocked(uid: int, target_id: int) -> bool:
+            # पहले in‑memory set में देखें (तेज़)
+            if target_id in user_bot.dm_blocked:
+                return True
+            # फिर DB से verify (अगर किसी वजह से set update न हुआ हो)
             async with db_pool.acquire() as conn:
                 row = await conn.fetchrow(
                     "SELECT 1 FROM dm_blocked WHERE user_id = $1 AND blocked_id = $2",
                     uid, target_id
                 )
-                return row is not None
+            return row is not None
 
         async def block_user(uid: int, target_id: int):
             async with db_pool.acquire() as conn:
@@ -13527,10 +14103,12 @@ async def run_user_bot(session_string, chat_id):
                     uid, target_id
                 )
                 await reset_warnings(uid, target_id)
-                try:
-                    await user_bot.block_user(target_id)
-                except Exception as e:
-                    print(f"Block error: {e}")
+            # ✅ in‑memory set को भी update करें
+            user_bot.dm_blocked.add(target_id)
+            try:
+                await user_bot.block_user(target_id)
+            except Exception as e:
+                print(f"Block error: {e}")
 
         async def unblock_user(uid: int, target_id: int):
             async with db_pool.acquire() as conn:
@@ -13539,10 +14117,12 @@ async def run_user_bot(session_string, chat_id):
                     uid, target_id
                 )
                 await reset_warnings(uid, target_id)
-                try:
-                    await user_bot.unblock_user(target_id)
-                except Exception as e:
-                    print(f"Unblock error: {e}")
+            # ✅ in‑memory set से हटाएँ
+            user_bot.dm_blocked.discard(target_id)
+            try:
+                await user_bot.unblock_user(target_id)
+            except Exception as e:
+                print(f"Unblock error: {e}")
 
         # ─── HELPER FUNCTIONS ──────────────────────────────────────────
         async def is_premium_user(uid: int) -> bool:
