@@ -2052,12 +2052,12 @@ async def run_user_bot_with_restart(session_string, chat_id):
 async def run_user_bot(session_string, chat_id):
     user_bot = None
     try:
-       user_bot = TelegramClient(
+        user_bot = TelegramClient(
             StringSession(session_string),
             API_ID,
             API_HASH,
-            auto_reconnect=True,   # False की जगह True
-            connection_retries=10  # 2 की जगह 10
+            auto_reconnect=True,
+            connection_retries=10
         )
         await user_bot.start()
         active_userbots[chat_id] = user_bot
