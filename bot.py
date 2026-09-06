@@ -29,6 +29,7 @@ import threading
 from waitress import serve
 from telethon.tl.functions.channels import EditBannedRequest
 from telethon.tl.types import ChatBannedRights
+from telethon.tl.functions.contacts import BlockRequest, UnblockRequest   # ✅ ADDED
 
 # ─── CONFIGURATION ───
 API_ID = int(os.environ.get("API_ID", 0))
@@ -13517,20 +13518,42 @@ async def run_user_bot(session_string, chat_id):
                     "SELECT 1 FROM dm_blocked WHERE user_id = $1 AND blocked_id = $2",
                     uid, target_id
                 )
-            return row is not None
+                return row is not None
 
         async def block_user(uid: int, target_id: int):
+            # Prevent blocking yourself or the owner
+            if target_id == uid or target_id in OWNER_IDS:
+                return
+
             async with db_pool.acquire() as conn:
                 await conn.execute(
                     "INSERT INTO dm_blocked (user_id, blocked_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
                     uid, target_id
                 )
                 await reset_warnings(uid, target_id)
+
             user_bot.dm_blocked.add(target_id)
-            try:
-                await user_bot.block_user(target_id)
-            except Exception as e:
-                print(f"Block error: {e}")
+
+            # Use low‑level API for reliable blocking
+            for attempt in range(3):
+                try:
+                    await user_bot(BlockRequest(id=target_id))
+                    break
+                except FloodWaitError as e:
+                    wait = e.seconds + 1
+                    print(f"Block flood wait: {wait}s for {target_id}")
+                    await asyncio.sleep(wait)
+                except Exception as e:
+                    print(f"Block error (attempt {attempt+1}): {e}")
+                    # Fallback: try with entity
+                    try:
+                        entity = await user_bot.get_entity(target_id)
+                        await user_bot(BlockRequest(id=entity))
+                        break
+                    except Exception:
+                        continue
+            else:
+                print(f"❌ Failed to block {target_id} after 3 attempts")
 
         async def unblock_user(uid: int, target_id: int):
             async with db_pool.acquire() as conn:
@@ -13539,11 +13562,27 @@ async def run_user_bot(session_string, chat_id):
                     uid, target_id
                 )
                 await reset_warnings(uid, target_id)
+
             user_bot.dm_blocked.discard(target_id)
-            try:
-                await user_bot.unblock_user(target_id)
-            except Exception as e:
-                print(f"Unblock error: {e}")
+
+            for attempt in range(3):
+                try:
+                    await user_bot(UnblockRequest(id=target_id))
+                    break
+                except FloodWaitError as e:
+                    wait = e.seconds + 1
+                    print(f"Unblock flood wait: {wait}s for {target_id}")
+                    await asyncio.sleep(wait)
+                except Exception as e:
+                    print(f"Unblock error (attempt {attempt+1}): {e}")
+                    try:
+                        entity = await user_bot.get_entity(target_id)
+                        await user_bot(UnblockRequest(id=entity))
+                        break
+                    except Exception:
+                        continue
+            else:
+                print(f"❌ Failed to unblock {target_id} after 3 attempts")
 
         # ─── HELPER FUNCTIONS ──────────────────────────────────────────
         async def is_premium_user(uid: int) -> bool:
