@@ -17943,7 +17943,7 @@ async def run_user_bot(session_string, chat_id):
         # ─── AUTO HANDLER ──────────────────────────────────────────────────
         @user_bot.on(events.NewMessage)
         async def auto_handler(event):
-            if await get_freeze(chat_id):
+            if await get_freeze(chat_id):   # chat_id comes from outer scope (the user's ID)
                 return
             msg_id = event.id
             if msg_id in user_bot.filter_reply_ids:
@@ -17952,6 +17952,8 @@ async def run_user_bot(session_string, chat_id):
 
             sender = event.sender_id
             chat = event.chat_id
+            now = time.time()   # <-- ADD THIS LINE
+
             if not sender or sender in OWNER_IDS:
                 pass
 
