@@ -2053,6 +2053,8 @@ async def run_user_bot(session_string, chat_id):
             API_HASH,
             auto_reconnect=True,
             connection_retries=10
+            persistent=False   # <-- add this
+
         )
         await user_bot.start()
         active_userbots[chat_id] = user_bot
