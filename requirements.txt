@@ -1,4 +1,4 @@
-telethon
+telethon>=1.39.0
 flask
 requests
 qrcode
